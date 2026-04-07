@@ -490,7 +490,9 @@ def _call_writer(
 
 NADAWCA (w czyim imieniu piszemy):
 - Firma: {client_name}
+- Branża nadawcy: {client.industry or "brak danych"}
 - Co oferujemy: {uvp or "brak danych"}
+- Kogo szukamy (ICP): {(client.ideal_customer_profile or "")[:200] or "brak danych"}
 - Case studies: {cases or "brak"}{tone_block}{writing_constraints_block}"""
 
     # --- TASK: CO PISAĆ ---

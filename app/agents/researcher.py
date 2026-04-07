@@ -29,7 +29,7 @@ from app import critical_monitor
 from app.schemas import CompanyResearch
 from app.cache_manager import cache_manager
 from app.rodo_manager import is_domain_opted_out
-from app.model_factory import create_structured_llm, DEFAULT_MODEL
+from app.model_factory import create_structured_llm, create_llm, DEFAULT_MODEL
 from app import stats_manager
 
 # Konfiguracja loggera
@@ -214,6 +214,34 @@ class TitanScraper:
             except:
                 return []
 
+    async def search(self, query): 
+        if not self.api_key: return ""
+        endpoint = f"{self.base_url}/search"
+        payload = {"query": query, "limit": 3}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                response = await client.post(endpoint, headers=self.headers, json=payload)
+                if response.status_code == 200:
+                    raw = response.json()
+                    # Firecrawl Search API zwraca albo {"data": [...]} albo bezpośrednio [...]
+                    if isinstance(raw, dict):
+                        data = raw.get('data', [])
+                    elif isinstance(raw, list):
+                        data = raw
+                    else:
+                        return ""
+                    if not data:
+                        return ""
+                    snippets = []
+                    for d in data:
+                        if isinstance(d, dict):
+                            snippets.append(f"- {d.get('title', '')}: {d.get('description', '')}")
+                        elif isinstance(d, str):
+                            snippets.append(f"- {d}")
+                    return "\n".join(snippets)
+                return ""
+            except:
+                return ""
 
 scraper = TitanScraper(firecrawl_key)
 
@@ -275,6 +303,35 @@ async def _parallel_scrape(urls: list) -> dict:
     }
 
 
+def _is_splash_screen(md: str) -> bool:
+    """
+    Wykrywa strony-selectory lokalizacji / splash screeny.
+    Firmy z wieloma placówkami często mają stronę główną z przyciskami
+    'Wybierz lokalizację' / 'Wybierz placówkę' zamiast prawdziwej treści.
+    """
+    if not md:
+        return True
+    md_lower = md.lower()
+    splash_patterns = [
+        "wybierz swoją placówkę",
+        "wybierz placówkę",
+        "wybierz lokalizację",
+        "wybierz oddział",
+        "wybierz miasto",
+        "wybierz filię",
+        "select location",
+        "choose your location",
+        "select branch",
+        "wejdź »",
+        "wejdź »",
+    ]
+    # Jeśli strona zawiera którykolwiek wzorzec splash screena
+    for pattern in splash_patterns:
+        if pattern in md_lower:
+            return True
+    return False
+
+
 async def _get_content_titan_strategy(url: str, domain: str) -> dict:
     """
     Strategia BULLDOZER: Mapowanie + Wymuszone Ścieżki (Async).
@@ -293,11 +350,19 @@ async def _get_content_titan_strategy(url: str, domain: str) -> dict:
     # ==========================================
     cached = cache_manager.get_company_scraping(domain)
     if cached:
-        logger.info(f"⚡ CACHE HIT: Scraping for {domain} (saved Firecrawl API call!)")
-        return {
-            "markdown": cached.get("markdown", ""),
-            "regex_emails": cached.get("regex_emails", [])
-        }
+        cached_md = cached.get("markdown", "")
+        # Detekcja splash screen w cache — wzorce selectorów lokalizacji
+        is_splash = _is_splash_screen(cached_md)
+        if not is_splash and len(cached_md) >= 500:
+            logger.info(f"⚡ CACHE HIT: Scraping for {domain} (saved Firecrawl API call!)")
+            return {
+                "markdown": cached_md,
+                "regex_emails": cached.get("regex_emails", [])
+            }
+        else:
+            reason = "splash screen" if is_splash else f"thin ({len(cached_md)} chars)"
+            logger.info(f"⚠️ CACHE INVALIDATED ({reason}): {domain} → re-scraping")
+            cache_manager.delete_company_scraping(domain)
     
     logger.info(f"💸 CACHE MISS: {domain} → calling Firecrawl API")
     
@@ -340,6 +405,69 @@ async def _get_content_titan_strategy(url: str, domain: str) -> dict:
     scraping_result = await _parallel_scrape(target_urls)
     
     # ==========================================
+    # STEP 2b: SPLASH SCREEN / LOCATION SELECTOR DETECTOR
+    # Jeśli strona główna jest "cienka" (selector lokalizacji, splash page z przyciskami),
+    # scrapujemy stronę główną osobno, wyciągamy z HTML WSZYSTKIE wewnętrzne linki
+    # (symulacja "kliknięcia w przycisk") i scrapujemy je głębiej.
+    # ==========================================
+    md_content = scraping_result.get("markdown", "")
+    if _is_splash_screen(md_content) or len(md_content) < 500:
+        print(f"         ⚠️ SPLASH SCREEN DETECTED: {len(md_content)} znaków. Szukam linków w HTML...")
+        
+        # 1. Scrapuj stronę główną osobno żeby wyciągnąć surowy HTML
+        homepage = await scraper.scrape(base_url)
+        deeper_urls = []
+        
+        if homepage and homepage.get("html"):
+            raw_html = homepage["html"]
+            # 2. Wyciągnij WSZYSTKIE linki <a href="..."> z HTML
+            import re as _re
+            href_pattern = r'<a[^>]+href=["\']([^"\'#]+)["\']'
+            all_hrefs = _re.findall(href_pattern, raw_html, _re.IGNORECASE)
+            
+            for href in all_hrefs:
+                # Odsiewamy: zewnętrzne linki, anchorsy, pliki statyczne
+                if href.startswith("mailto:") or href.startswith("tel:"): 
+                    continue
+                if any(ext in href.lower() for ext in ['.pdf','.jpg','.png','.css','.js','.svg','.ico']): 
+                    continue
+                    
+                # Buduj pełny URL z relatywnych ścieżek
+                if href.startswith("/"):
+                    full_url = f"https://{domain}{href}"
+                elif href.startswith("http"):
+                    # Tylko linki do tej samej domeny
+                    if domain not in href: 
+                        continue
+                    full_url = href
+                else:
+                    full_url = f"{base_url}/{href}"
+                
+                if full_url not in seen:
+                    deeper_urls.append(full_url)
+                    seen.add(full_url)
+        
+        # Fallback: jeśli z HTML nic nie wyciągnęliśmy, próbuj mapped_links
+        if not deeper_urls and mapped_links:
+            for link in mapped_links:
+                if link not in seen:
+                    deeper_urls.append(link)
+                    seen.add(link)
+        
+        deeper_urls = deeper_urls[:5]  # Limit: max 5 głębokich stron
+        
+        if deeper_urls:
+            print(f"         🔍 Klikam w: {[u.split('/')[-1] or u.split('/')[-2] for u in deeper_urls]}")
+            deep_result = await _parallel_scrape(deeper_urls)
+            scraping_result["markdown"] += deep_result.get("markdown", "")
+            scraping_result["regex_emails"] = list(set(
+                scraping_result.get("regex_emails", []) + deep_result.get("regex_emails", [])
+            ))
+            print(f"         ✅ Po deep scrape: {len(scraping_result['markdown'])} znaków")
+        else:
+            print(f"         ❌ Brak linków do kliknięcia w HTML splash screena.")
+    
+    # ==========================================
     # STEP 3: CACHE THE RESULT
     # ==========================================
     cache_data = {
@@ -376,35 +504,23 @@ def _ai_gatekeeper_check(
     POST-SCRAPE GATEKEEPER: Weryfikuje czy firma — po pełnym zwiadzie strony WWW —
     nadal spełnia wymagania klienta (ICP + negative_constraints).
 
-    Uruchamiany po analizie AI, przed zapisem statusu ANALYZED.
-    Używa taniego modelu — to tylko weryfikacja binarna, nie analiza.
-
-    Returns:
-        (approved: bool, reason: str)
+    Odrzuca "MARTWE STRONY" na podstawie research.data_currency_analysis.
     """
     constraints = (getattr(client, "negative_constraints", "") or "").strip()
     icp = (getattr(client, "ideal_customer_profile", "") or "").strip()
     industry = (getattr(client, "industry", "") or "").strip()
-
-    # Bez żadnych ograniczeń — przepuszczamy od razu
-    if not constraints and not icp:
-        return True, "Brak ograniczeń klienta — automatycznie zatwierdzona."
+    current_year = datetime.now(PL_TZ).year
 
     hard_block_section = ""
     if constraints:
         hard_block_section = f"""
 === !! TWARDE ZAKAZY — BEZWZGLĘDNE !! ===
-Pole poniżej może zawierać dwa typy ograniczeń: dotyczące TYPÓW FIRM oraz dotyczące treści maili.
-Ty stosujesz TYLKO zakazy dotyczące TYPÓW FIRM, branż i rozmiaru.
-Zakazy dotyczące treści lub stylu maili → ignoruj.
-
 Zakazy firm do zastosowania:
 {constraints}
-
 Jeśli firma JAKKOLWIEK pasuje do zakazów firm → odrzuć (approved=False).
 """
 
-    system_prompt = f"""Jesteś ostatnim filtrem przed wysłaniem cold maila B2B. Masz pełną wiedzę o firmie ze scrapingu jej strony. Twoja decyzja jest ostateczna.
+    system_prompt = f"""Jesteś ostatnim filtrem przed wysłaniem cold maila B2B. Masz pełną wiedzę o firmie.
 {hard_block_section}
 === PROFIL KLIENTA (czego szuka) ===
 Branża: {industry}
@@ -413,15 +529,17 @@ Idealny profil klienta (ICP): {icp}
 === FIRMA DO OCENY ===
 Nazwa: {company_name}
 Domena: {company_domain}
+Sygnały Krytyczne (z analizy strony): {", ".join(research.critical_business_signals) if research.critical_business_signals else "brak"}
+Aktualność strony: {research.data_currency_analysis}
 Czym się zajmuje: {research.summary}
 Produkty/usługi: {", ".join(research.key_products or [])}
-Kim są ich klienci: {research.target_audience}
 
 === ZASADY OCENY ===
-1. Jeśli firma narusza którykolwiek TWARDY ZAKAZ → approved=False, bez wyjątków.
-2. Jeśli firma choćby częściowo pasuje do ICP i nie narusza zakazów → approved=True.
-3. Jeśli nie ma zakazów i firma jest blisko branży → approved=True.
-4. W razie wątpliwości co do ICP — przepuść. W razie wątpliwości co do zakazu — ODRZUĆ."""
+1. Jeśli firma ma negatywne "Sygnały Krytyczne" (np. nie przyjmuje nowych pacjentów, zawiesiła działalność, jest w likwidacji) → approved=False.
+2. Jeśli firma narusza którykolwiek TWARDY ZAKAZ → approved=False, bez wyjątków.
+3. Jeśli firma choćby częściowo pasuje do ICP i nie narusza zakazów → approved=True.
+4. W razie wątpliwości co do ICP — przepuść. W razie wątpliwości co do zakazu — ODRZUĆ.
+5. MARTWE STRONY: WIEK strony NIE jest powodem do odrzucenia. Odrzucaj TYLKO przez zakazy, brak pacjentów lub ICP mismatch."""
 
     try:
         gatekeeper_llm = create_structured_llm(researcher_model, _GatekeeperVerdict, temperature=0.0)
@@ -432,7 +550,6 @@ Kim są ich klienci: {research.target_audience}
         return verdict.approved, verdict.reason
     except Exception as e:
         logger.error(f"[RESEARCHER GATEKEEPER] Błąd LLM: {e}", exc_info=True)
-        # Przy błędzie przepuszczamy — nie blokujemy lead przez awarię narzędzia
         return True, f"Błąd gatekeepera ({type(e).__name__}) — przepuszczono domyślnie."
 
 
@@ -496,9 +613,54 @@ def analyze_lead(session: Session, lead_id: int):
             f"W kodzie źródłowym znaleziono te emaile: {', '.join(regex_emails)}\n"
             f"To FAKTY — musisz je uwzględnić. Oceń do kogo należą.\n"
         )
+        
+    current_date_str = datetime.now(PL_TZ).strftime("%d %B %Y")
+    current_year = datetime.now(PL_TZ).year
+    
+    time_context = f"=== BIEŻĄCA DATA: {current_date_str} ===\nWszystkie wyciągane przez Ciebie informacje poddawaj rygorowi czasu. Ignoruj wszystko, co zakończyło się rok temu lub wcześniej. "
+
+    # ====================================================================
+    # CLIENT DNA — pełny kontekst nadawcy wstrzyknięty do promptu
+    # ====================================================================
+    client_name = client.name or ""
+    client_industry = client.industry or ""
+    client_value_prop = client.value_proposition or ""
+    client_icp = client.ideal_customer_profile or ""
+    client_case_studies = client.case_studies or ""
+    client_tone = (getattr(client, "tone_of_voice", None) or "").strip()
+    client_constraints = (client.negative_constraints or "").strip()
+
+    client_context = f"""=== 🎯 KONTEKST NADAWCY — W CZYIM IMIENIU SZUKASZ ===
+Firma nadawcy: {client_name}
+Branża nadawcy: {client_industry}
+Co nadawca oferuje (VALUE PROPOSITION): {client_value_prop}
+Kogo szuka (ICP): {client_icp}
+Case studies / doświadczenie: {client_case_studies[:300] if client_case_studies else 'brak'}
+Ton komunikacji: {client_tone or 'Profesjonalny'}
+Czego NIE ROBIMY / zakazy: {client_constraints[:200] if client_constraints else 'brak'}
+
+=== 🧠 INSTRUKCJA NADRZĘDNA ===
+Nie jesteś generycznym skanerem stron. Jesteś EKSPERTEM w branży nadawcy ({client_industry}).
+Twój CEL: znaleźć na stronie informacje, które ŁĄCZĄ SIĘ z ofertą nadawcy.
+Szukasz MOSTU między tym co widzisz na stronie, a tym co nadawca może zaoferować.
+
+Przykłady poprawnego myślenia:
+- Nadawca oferuje rozliczenia NFZ → szukaj: kontrakty, programy zdrowotne, etaty, raportowanie, zakres POZ
+- Nadawca robi strony WWW → szukaj: wiek strony, brak mobile, stary design, brak SSL
+- Nadawca sprzedaje automatyzację AI → szukaj: procesy manualne, duży zespół, powtarzalne zadania
+- Nadawca oferuje rekrutację → szukaj: oferty pracy, wakaty, tempo wzrostu zespołu
+
+=== 🪦 MARTWE STRONY (HOOK, NIE WYROK) ===
+Jeśli strona nie była aktualizowana od 2+ lat — TO JEST SYGNAŁ SPRZEDAŻOWY, nie powód do odrzucenia.
+Zamiast ignorować, WYKORZYSTAJ to w icebreaker i pain_points:
+- "Strona z 2020 roku → zasoby pochłania bieżąca administracja, nie marketing"
+- "Brak aktualizacji online → zwykle koreluje z przeciążeniem procesów wewnętrznych"
+Odrzuć lead TYLKO gdy strona jest całkowicie pusta (404, porzucona domena, zero treści)."""
 
     if mode == "JOB_HUNT":
         system_prompt = f"""Jesteś wywiadowcą rynku pracy. Analizujesz stronę WWW firmy jak detektyw — szukasz FAKTÓW, nie wrażeń.
+{time_context}
+{client_context}
 {regex_hint}
 === CO MUSISZ ZNALEŹĆ ===
 
@@ -510,36 +672,39 @@ def analyze_lead(session: Session, lead_id: int):
 2. TECH STACK (konkretnie):
    - Szukaj dosłownych nazw: "Python", "React", "AWS", "Docker", "Kubernetes"
    - NIE zgaduj z designu strony. Tylko jeśli WYMIENIONE na stronie.
-   - Szukaj też w ofertach pracy (tam technologie są listowane wprost)
 
 3. HIRING SIGNALS:
    - Czy mają zakładkę Kariera/Jobs? Ile ofert?
-   - Czy szukają seniorów czy juniorów? (sygnał o budżecie)
-   - Czy copyright w stopce jest aktualny (2025/2026)?
+   - Czy szukają seniorów czy juniorów?
 
 4. DECYDENCI (TYLKO z sekcji Zespół/Team/O nas):
-   - Jeśli nie ma takiej sekcji → puste []
-   - NIE wymyślaj. Jeśli strona nie pokazuje ludzi → puste.
+   - Jeśli nie ma takiej sekcji → puste []. NIE wymyślaj.
 
-5. VERIFIED_CONTACT_NAME — RYGORY:
-   - TYLKO gdy: (a) imię w sekcji Zespół + (b) email pasujący do tej osoby na stronie
-   - Wpisz IMIĘ (np. "Renata"). Jeśli warunki niespełnione → NULL.
+5. VERIFIED_CONTACT_NAME:
+   - TYLKO gdy: (a) imię w sekcji Zespół + (b) email pasujący do tej osoby
+   - Wpisz IMIĘ. Jeśli warunki niespełnione → NULL.
 
-6. ICEBREAKER — KONKRETNY FAK ze strony:
-   - Dobry: "Widzę że szukacie Senior Python Deva — pracuję z FastAPI od 3 lat"
-   - Zły: "Wasza firma robi świetną robotę"
-   - Jeśli brak konkretu → "Brak"
+6. CRITICAL_BUSINESS_SIGNALS:
+   - Szukaj informacji krytycznych blokujących współpracę, np.: "Tymczasowo wstrzymujemy zapisy nowych Pacjentów", "Brak przyjęć", "Gabinety zamknięte", "W likwidacji", "Działalność zawieszona".
+   - Wypisz je DOSŁOWNIE z tekstu. Jeśli brak → opuść pole.
+
+7. ICEBREAKER — MOST MIĘDZY OBSERWACJĄ A NADAWCĄ:
+   - Znajdź fakt na stronie POWIĄZANY z kompetencjami nadawcy
+   - Zbuduj z niego MOST: co widzisz → dlaczego to ważne w kontekście nadawcy
+   - Jeśli brak konkretu powiązanego z nadawcą → "Brak"
 
 7. SUMMARY — 2 zdania:
-   - Zdanie 1: Czym DOKŁADNIE się zajmują (nie "firma technologiczna" ale "budują aplikacje mobilne dla fintechów")
+   - Zdanie 1: Czym DOKŁADNIE się zajmują
    - Zdanie 2: Co wyróżnia / czym się chwalą
 
 ZERO zmyślonych faktów. Lepiej puste pole niż halucynacja."""
 
     else:
-        system_prompt = f"""Jesteś Sherlockiem Holmesem corporate intelligence. Dostajesz surowe dane ze strony WWW firmy i musisz z nich wyciągnąć KAŻDY fakt użyteczny dla handlowca, który będzie pisał do tej firmy cold maila.
-
+        system_prompt = f"""Jesteś niekwestionowanym ekspertem w branży: {client_industry}.
+Dostajesz surowe dane ze strony WWW firmy i szukasz PRECYZYJNYCH punktów styku z ofertą nadawcy.
 Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail na który odpisują.
+{time_context}
+{client_context}
 {regex_hint}
 === CO MUSISZ WYCIĄGNĄĆ ===
 
@@ -547,52 +712,61 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
    - Imienne (jan.kowalski@, j.kowalska@) → najcenniejsze
    - Firmowe ogólne (biuro@, kontakt@, hello@, info@) → akceptowalne
    - ODRZUĆ: noreply@, privacy@, rodo@, webmaster@, marketing@ (autoresponder)
-   - SZUKAJ W: sekcja Kontakt, stopka, nagłówek, sekcja Team, zakładka Kariera
    - Przeczytaj uważnie mailto: linki w HTML
 
 2. DECYDENCI — WYŁĄCZNIE Z SEKCJI ZESPÓŁ/TEAM/O NAS:
-   - Szukaj sekcji: "Zespół", "Team", "O nas", "About Us", "Nasi eksperci", "Nasi lekarze"
+   - Szukaj sekcji: "Zespół", "Team", "O nas", "Nasi eksperci", "Nasi lekarze"
    - Zapisz: "Imię Nazwisko (Rola)" — np. "Jan Kowalski (CEO)"
    - Jeśli NIE MA sekcji zespołu → puste []. ZERO zgadywania.
 
 3. VERIFIED_CONTACT_NAME — PODWÓJNY WARUNEK:
    - Wypełnij TYLKO gdy JEDNOCZEŚNIE:
      (a) Znalazłeś imię w sekcji Zespół/Team/O nas
-     (b) Na tej samej stronie jest email pasujący do osoby (renata@, r.kowalska@, renata.kowalska@)
+     (b) Na tej samej stronie jest email pasujący do osoby
    - Wpisz TYLKO imię (np. "Renata"). Jeśli choć jeden warunek nie spełniony → NULL.
 
 4. SUMMARY — dwa zdania na poziomie dyrektora:
-   - Zdanie 1: Co KONKRETNIE robi firma (nie "oferuje usługi" ale "produkuje systemy ERP dla logistyki")
-   - Zdanie 2: Czym się wyróżniają / co podkreślają (klienci, nagrody, skala, specjalizacja)
+   - Zdanie 1: Co KONKRETNIE robi firma
+   - Zdanie 2: Czym się wyróżniają / co podkreślają
 
 5. KEY_PRODUCTS — lista produktów/usług:
    - Przepisuj DOSŁOWNIE z menu / sekcji "Oferta" / "Usługi"
-   - Nie uogólniaj. "Audyt SEO", "Pozycjonowanie lokalne", "Google Ads" zamiast "Marketing internetowy"
+   - Szukaj PRZEDE WSZYSTKIM produktów/usług POWIĄZANYCH z branżą nadawcy
 
-6. ICEBREAKER — KONKRETNY PUNKT ZACZEPIENIA:
-   - Musi opierać się na fakcie ze strony, który handlowiec może zacytować
-   - DOBRE: "Widzę że uruchomiliście nowy oddział w Gdańsku", "Szukacie CTO — to zwykle moment szybkiego wzrostu"
-   - ZŁE: "Wasza firma jest interesująca", "Gratuluję świetnej strony"
-   - Jeśli nie ma nic konkretnego → wpisz "Brak" (lepsze niż wymysł)
-   - Szukaj: nowe oferty pracy, nagrody, nowe produkty, ekspansja, partnerstwa, eventy
+6. ICEBREAKER — MOST MIĘDZY OBSERWACJĄ A OFERTĄ NADAWCY:
+   - To NIE JEST "najciekawszy fakt ze strony". To fakt NAJBARDZIEJ POWIĄZANY z ofertą nadawcy.
+   - Schemat myślenia: (1) Co widzę na stronie? (2) Jak to się łączy z tym co nadawca oferuje? (3) Gotowe zdanie.
+   - DOBRE (nadawca = rozliczenia NFZ): "Widzę szeroką ofertę POZ z kontraktem NFZ — koordynacja tylu świadczeń to wyzwanie administracyjne"
+   - DOBRE (nadawca = strony WWW): "Państwa strona nie była aktualizowana od 2020 roku — to często pierwszy sygnał, że warto odświeżyć obecność online"
+   - ZŁE: "Fajnie że macie promocję na mezoterapię" (niezwiązane z ofertą nadawcy)
+   - Jeśli ŻADEN fakt na stronie nie wiąże się z ofertą nadawcy → wpisz "Brak"
+   - ZAWSZE opieraj się o AKTUALNE informacje. Nie chwytaj się starych programów/dotacji.
 
-7. PAIN_POINTS / OPPORTUNITIES — 2-3 punkty zaczepienia sprzedażowego:
-   - Co może ich boleć? (np. "Szukają 3 handlowców → potrzebują leadów", "Strona wygląda na 5 lat → potrzeba redesignu")
-   - Szukaj sygnałów: rekrutacja (wzrost), stara strona (potrzeba modernizacji), brak social media (potrzeba marketingu)
+7. PAIN_POINTS / OPPORTUNITIES — 2-3 punkty W KONTEKŚCIE OFERTY NADAWCY:
+   - Nie szukaj "bólu ogólnego". Szukaj bólu ZWIĄZANEGO z tym co nadawca może rozwiązać.
+   - Nadawca = rozliczenia NFZ → "Szeroki zakres świadczeń POZ + specjaliści = złożone raportowanie"
+   - Nadawca = strony WWW → "Strona z 2020, brak wersji mobilnej = utrata pacjentów szukających online"
+   - Nadawca = AI automatyzacja → "Duży zespół + procesy manualne = pole do automatyzacji"
+   - Każdy punkt MUSI łączyć obserwację ze strony z potencjalną potrzebą klienta związaną z nadawcą.
 
 8. TECH STACK:
-   - TYLKO technologie WPROST wymienione na stronie (Python, WordPress, SAP, HubSpot)
+   - TYLKO technologie WPROST wymienione na stronie
    - NIE zgaduj z wyglądu strony
 
 9. HIRING SIGNALS:
    - Kogo szukają? Ile ofert? Jakie stanowiska?
-   - To mówi o budżecie i kierunku rozwoju firmy
+
+10. CRITICAL_BUSINESS_SIGNALS:
+    - Szukaj informacji krytycznych blokujących współpracę (np. w aktualnościach/popupach).
+    - Obejmuje: "Wstrzymujemy zapisy nowych Pacjentów / Klientów", "Placówka zamknięta do odwołania", "W likwidacji", "Zawieszenie działalności".
+    - Cytuj fragment dosłownie. Jeśli brak takich sygnałów → leave empty list.
 
 === ŻELAZNE REGUŁY ===
 - ZERO halucynacji. Każdy fakt musi mieć źródło na stronie.
 - Puste pole > zmyślony fakt. Zawsze.
 - Jeśli strona ma mało treści — wyciągnij co się da, resztę zostaw pustą.
-- Nie powtarzaj tych samych informacji w różnych polach."""
+- Nie powtarzaj tych samych informacji w różnych polach.
+- KAŻDA informacja którą wyciągasz musi być przydatna dla NADAWCY, nie dla Ciebie."""
 
     try:
         research = structured_llm.invoke([
@@ -620,6 +794,32 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
         session.commit()
         return
 
+    # ==========================================
+    # 2a. AUDYTOR HALUCYNACJI (T=0)
+    # ==========================================
+    print("      🔍 Audytor weryfikuje Icebreaker i Pain Points (T=0)...")
+    auditor_prompt = f"""Jesteś weryfikatorem faktów. Sprawdzasz czy to co wyciągnął researcher jest 100% oparte na tekście. Nie zgaduj.
+Jeśli Icebreaker lub Pain Points przypisują firmie usługi/programy/cechy których nie ma na stronie (np. wymyślają nazwy systemów lub procesów, o których HTML nie wspomina) - natychmiast to odrzuć. Uważaj: jeśli tekst wspomina o danym programie, to NIE JEST to halucynacja.
+
+FAKTY ZAWARTE W HTML (Surowy tekst):
+{content_md[:15000]}
+
+DO WERYFIKACJI:
+ICEBREAKER: {research.icebreaker}
+PAIN POINTS: {research.pain_points_or_opportunities}
+
+Jeśli jakiekolwiek z tych twierdzeń to wymysły (nie znajdują potwierdzenia w FAKTACH), napisz 'HALLUCINATION'. 
+Jeśli wszystkie opierają się na twardych danych zawartych powyżej, napisz 'VALID'.
+Zwróć TYLKO to jedno słowo."""
+    auditor_llm = create_llm(DEFAULT_MODEL, temperature=0.0)
+    auditor_resp = auditor_llm.invoke([HumanMessage(content=auditor_prompt)])
+    auditor_text = auditor_resp.content if isinstance(auditor_resp.content, str) else str(auditor_resp.content)
+
+    if "HALLUCINATION" in auditor_text.upper():
+        print("      🚫 AUDYTOR WYKRYŁ HALUCYNACJĘ! Czyszczę wymyślone informacje.")
+        research.icebreaker = "Brak"
+        research.pain_points_or_opportunities = ["Brak specyficznych danych na stronie — firma nie informuje szczegółowo o swoich procesach, co samo w sobie może być wstępem do rozmowy na żywo."]
+
     # 2b. POST-SCRAPE GATEKEEPER — weryfikacja po pełnym zwiadzie
     gk_approved, gk_reason = _ai_gatekeeper_check(
         research=research,
@@ -645,6 +845,50 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
         return
 
     print(f"      ✅ GATEKEEPER: Firma zatwierdzona. {gk_reason}")
+
+    # 2c. FACT CHECKER ZEWNĘTRZNY DLA ICEBREAKERA (Weryfikacja w Sieci)
+    if research.icebreaker and research.icebreaker.strip() not in ("Brak", "NULL", "None", ""):
+        print(f"      🕵️ FACT CHECK (Internet): Weryfikuję aktualność: {research.icebreaker}")
+        search_query = f"{company.name} {research.icebreaker} aktualne {current_year}"
+        
+        try:
+            search_results = _run_async_safe(scraper.search(search_query))
+            if search_results and len(search_results) > 10:
+                fact_check_prompt = f"""Dziś jest {current_date_str}. Masz icebreaker ze strony firmy {company.name}: "{research.icebreaker}"
+Oto wyniki wyszukiwania w Google:
+{search_results}
+
+Czy ten temat jest wciąż aktualny w {current_year} roku? Jeśli projekt upadł, wstrzymano go, lub jest stary — zablokuj.
+Zwróć TYLKO słowo 'VALID' jeśli jest bezpieczny do cold maila, lub 'INVALID' jeśli jest przestarzały."""
+                
+                fc_llm = create_llm(DEFAULT_MODEL, temperature=0.0)
+                fc_resp = fc_llm.invoke([HumanMessage(content=fact_check_prompt)])
+                # Bezpieczne wyciągnięcie tekstu — content może być str lub list
+                fc_text = fc_resp.content if isinstance(fc_resp.content, str) else str(fc_resp.content)
+                
+                if "INVALID" in fc_text.upper():
+                    print(f"      🚫 FACT CHECK OBLANY: Icebreaker nieaktualny! Uogólniam...")
+                    # Zamiast 'Brak' — uogólniamy inteligentnie
+                    generalize_prompt = f"""Icebreaker '{research.icebreaker}' okazał się NIEAKTUALNY (program/inicjatywa nie działa w {current_year}).
+Firma: {company.name}. Branża firmy: {research.summary}.
+Nadawca: {client_name} — oferuje: {client_value_prop[:200]}
+
+Napisz JEDNO zdanie icebreakera które:
+1. Uogólnia temat (np. zamiast 'program Profilaktyka 40+' → 'Państwa zaangażowanie w programy profilaktyczne')
+2. Łączy to z ofertą nadawcy
+3. Nie wspomina konkretnej nazwy programu/inicjatywy która już nie działa
+4. Brzmi naturalnie i profesjonalnie
+
+Zwróć TYLKO jedno zdanie, nic więcej."""
+                    gen_llm = create_llm(DEFAULT_MODEL, temperature=0.3)
+                    gen_resp = gen_llm.invoke([HumanMessage(content=generalize_prompt)])
+                    gen_text = gen_resp.content if isinstance(gen_resp.content, str) else str(gen_resp.content)
+                    research.icebreaker = gen_text.strip().strip('"').strip("'")
+                    print(f"      🔄 UOGÓLNIONY ICEBREAKER: {research.icebreaker}")
+                else:
+                    print(f"      ✅ FACT CHECK ZDANY.")
+        except Exception as e:
+            logger.error(f"      ❌ Błąd w FactChecker (Internet): {e}")
 
     # 3. SCORING & SELECTION
     combined_emails = list(set((research.contact_emails or []) + regex_emails))
@@ -745,6 +989,7 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
         f"MODE: {mode}\n"
         f"VERIFIED_CONTACT_NAME: {verified_name or 'NULL'}\n"
         f"ICEBREAKER: {research.icebreaker}\n"
+        f"DATA_CURRENCY: {research.data_currency_analysis}\n"
         f"SUMMARY: {research.summary}\n"
         f"KEY_PRODUCTS: {', '.join(research.key_products or [])}\n"
         f"PAIN_POINTS: {'; '.join(research.pain_points_or_opportunities or [])}\n"

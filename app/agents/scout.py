@@ -90,11 +90,14 @@ def _get_client_icp(session: Session, campaign_id: int) -> dict:
                 "value_proposition": "", "negative_constraints": "", "strategy_prompt": ""}
     c = campaign.client
     return {
+        "name": c.name or "",
         "icp": c.ideal_customer_profile or "",
         "industry": c.industry or "",
         "mode": getattr(c, "mode", "SALES"),
         "value_proposition": c.value_proposition or "",
         "negative_constraints": c.negative_constraints or "",
+        "case_studies": (c.case_studies or "")[:300],
+        "tone_of_voice": (getattr(c, "tone_of_voice", None) or "").strip(),
         "strategy_prompt": campaign.strategy_prompt or "",
         "scout_model": getattr(c, "scout_model", None) or DEFAULT_MODEL,
     }
@@ -150,7 +153,9 @@ Jeśli masz wątpliwości czy firma pasuje do zakazu — ODRZUĆ.
     system_prompt = f"""Jesteś filtrem jakości leadów B2B. Twoja robota: przepuścić firmy pasujące do profilu klienta i bezwzględnie blokować te niezgodne z zakazami.
 {hard_block_section}
 === PROFIL KLIENTA ===
+Firma nadawcy: {client_data.get('name', '')}
 Branża klienta: {industry}
+Co klient oferuje: {client_data['value_proposition']}
 Kogo szuka (ICP): {icp}
 Tryb: {mode} (SALES = szuka klientów do sprzedaży, JOB_HUNT = szuka pracodawców)
 

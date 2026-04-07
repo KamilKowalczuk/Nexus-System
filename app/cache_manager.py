@@ -135,6 +135,16 @@ class CacheManager:
         
         return success
     
+    def delete_company_scraping(self, domain: str) -> bool:
+        """
+        Invalidate cached scraping result (e.g., when splash screen detected).
+        """
+        key = f"{self.PREFIX_COMPANY}{self._hash(domain)}"
+        deleted = self.redis.delete(key)
+        if deleted:
+            logger.info(f"🗑️ Invalidated scraping cache: {domain}")
+        return bool(deleted)
+    
     # ==========================================
     # CAMPAIGN QUERY HISTORY (Replace JSON files)
     # ==========================================

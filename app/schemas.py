@@ -19,6 +19,12 @@ class StrategyOutput(BaseModel):
 class CompanyResearch(BaseModel):
     """Wynik analizy strony WWW firmy (Titan Enterprise Edition)"""
     
+    data_currency_analysis: str = Field(
+        description="Analiza aktualności danych na stronie. Przed zebraniem jakichkolwiek faktów zbadaj copyright w stopce, "
+                    "daty najnowszych aktualności, postów lub wpisów na blogu. Oceń, czy domena jest wciąż żywa i aktualizowana "
+                    "w bieżącym roku. Jeśli firma wygląda na 'martwą' (np. ostatnie newsy z przed 2 lat), wyraźnie to zaznacz."
+    )
+    
     company_name: str = Field(description="Oficjalna nazwa firmy zidentyfikowana na stronie.")
     
     summary: str = Field(
@@ -61,13 +67,24 @@ class CompanyResearch(BaseModel):
     )
     
     icebreaker: str = Field(
-        description="Hiper-personalizowane zdanie otwierające maila. Musi udowadniać, że zrobiliśmy research. "
-                    "Np. 'Gratuluję nagrody Diamenty Forbesa', 'Widziałem, że rozwijacie zespół mobile'."
+        description="MOST między obserwacją na stronie a ofertą nadawcy. "
+                    "To NIE JEST 'najciekawszy fakt'. To fakt NAJBARDZIEJ POWIĄZANY z tym co nadawca oferuje. "
+                    "Schemat: (1) obserwacja ze strony (2) jak łączy się z ofertą nadawcy (3) gotowe zdanie. "
+                    "OPARTE WYŁĄCZNIE NA AKTUALNYCH DANYCH. Bezwzględny zakaz starych programów/dotacji. "
+                    "Jeśli ŻADEN fakt nie wiąże się z ofertą nadawcy → wpisz 'Brak'."
     )
     
     pain_points_or_opportunities: List[str] = Field(
         description="2-3 punkty zaczepienia do sprzedaży. Np. 'Szukają handlowców (potrzeba leadów)', "
                     "'Mają przestarzałą stronę (potrzeba redesignu)'."
+    )
+
+    critical_business_signals: List[str] = Field(
+        default_factory=list,
+        description="SYGNAŁY KRYTYCZNE ze strony, które mogą wpłynąć na decyzję o kontakcie. "
+                    "Np. 'Wstrzymanie zapisów nowych pacjentów', 'Firma w likwidacji', "
+                    "'Zawieszenie działalności', 'Brak kontraktu NFZ'. "
+                    "Jeśli brak takich sygnałów → pusta lista."
     )
 
 class EmailDraft(BaseModel):
