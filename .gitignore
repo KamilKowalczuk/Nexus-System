@@ -47,6 +47,7 @@ build/
 # CLAUDE CODE (sesje lokalne)
 # ========================
 .claude/
+context/
 
 # ========================
 # SYSTEM / EDYTORY
