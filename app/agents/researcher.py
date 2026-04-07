@@ -18,11 +18,14 @@ from zoneinfo import ZoneInfo
 PL_TZ = ZoneInfo("Europe/Warsaw")
 from sqlalchemy.orm import Session
 from langchain_core.messages import SystemMessage, HumanMessage
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 # Importy z aplikacji
 from app.database import Lead, GlobalCompany
 from app.tools import verify_email_mx, verify_email_deep, get_main_domain_url
+from app.alerts import send_operator_alert
+from app import critical_monitor
 from app.schemas import CompanyResearch
 from app.cache_manager import cache_manager
 from app.rodo_manager import is_domain_opted_out
@@ -44,61 +47,101 @@ if not firecrawl_key:
 # --- NARZĘDZIA POMOCNICZE ---
 
 def extract_emails_from_html(raw_html: str) -> list:
-    """Ekstrakcja z BRUDNEGO HTMLa (X-RAY)."""
+    """Ekstrakcja z BRUDNEGO HTMLa (X-RAY). Odporny na placeholder emaile z formularzy."""
     if not raw_html: return []
-    
+
     text = html.unescape(raw_html)
+
+    # STEP 0: Wyciągnij placeholdery z atrybutów HTML formularzy.
+    # Adresy w placeholder/value inputów to ZAWSZE przykłady — nigdy nie piszemy do nich.
+    form_placeholder_emails: set[str] = set()
+    _placeholder_patterns = [
+        r'placeholder=["\']([^"\']{4,80})["\']',
+        r'<input[^>]*type=["\'](?:email|text)["\'][^>]*value=["\']([^"\']{4,80})["\']',
+        r'<input[^>]*value=["\']([^"\']{4,80})["\'][^>]*type=["\'](?:email|text)["\']',
+    ]
+    for pattern in _placeholder_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            candidate = match.group(1).strip().lower()
+            if '@' in candidate:
+                form_placeholder_emails.add(candidate)
+
+    if form_placeholder_emails:
+        logger.debug(f"[RESEARCHER] Placeholdery formularzy (blokada): {form_placeholder_emails}")
+
     emails = []
-    
     mailto_pattern = r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
     emails.extend(re.findall(mailto_pattern, text))
-    
+
     text_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     emails.extend(re.findall(text_pattern, text))
-    
+
     unique = list(set(e.lower() for e in emails))
     clean = []
     
-    # Kwarantanna: Twarde wykluczenie darmowych poczt domowych (Bramka B2B Only - UŚUDE)
-    freemail_domains = [
-        # --- POLSKIE (W tym subdomeny i aliasy korporacyjne WP/Onet/Interia) ---
-    'wp.pl', 'o2.pl', 'onet.pl', 'onet.eu', 'op.pl', 'interia.pl', 'interia.eu', 'interia.com'
-    'poczta.fm', 'tlen.pl', 'gazeta.pl', 'go2.pl', 'vp.pl', 'spoko.pl', 'vip.interia.pl', 
-    'autograf.pl', 'int.pl', 'aqq.eu', 'poczta.onet.pl', 'poczta.wp.pl', 'pro.wp.pl', 
-    'o2.eu', 'buziaczek.pl', 'amorki.pl', 'lubie.to', 'poczta.interia.pl',
-    
-    # --- GOOGLE ---
-    'gmail.com', 'googlemail.com',
-    
-    # --- MICROSOFT ---
-    'hotmail.com', 'outlook.com', 'live.com', 'msn.com', 'windowslive.com', 'passport.com',
-    'outlook.eu', 'hotmail.co.uk', 'live.co.uk', # popularne rozszerzenia w EU
-    
-    # --- YAHOO & AOL ---
-    'yahoo.com', 'ymail.com', 'rocketmail.com', 'aol.com', 'aim.com', 
-    'yahoo.co.uk', 'yahoo.pl',
-    
-    # --- APPLE ---
-    'icloud.com', 'me.com', 'mac.com',
-    
-    # --- BEZPIECZNE / SZYFROWANE (Często używane do ukrywania tożsamości) ---
-    'protonmail.com', 'protonmail.ch', 'proton.me', 'pm.me', 
-    'tutanota.com', 'tutanota.de', 'tutamail.com', 'tuta.io', 'keemail.me',
-    
-    # --- INNE GLOBALNE ---
-    'mail.com', 'zoho.com', 'zoho.eu', 'yandex.com', 'yandex.ru', 
-    'gmx.com', 'gmx.net', 'gmx.de', 'fastmail.com', 'fastmail.fm', 'hey.com',
-    'inbox.com', 'mail.ru', 'qq.com', '163.com', '126.com', 'sina.com'
-    ]
-    
+    # Kwarantanna: Twarde wykluczenie darmowych poczt domowych (Bramka B2B Only)
+    freemail_domains = {
+        # --- POLSKIE ---
+        'wp.pl', 'o2.pl', 'onet.pl', 'onet.eu', 'op.pl', 'interia.pl', 'interia.eu', 'interia.com',
+        'poczta.fm', 'tlen.pl', 'gazeta.pl', 'go2.pl', 'vp.pl', 'spoko.pl', 'vip.interia.pl',
+        'autograf.pl', 'int.pl', 'aqq.eu', 'poczta.onet.pl', 'poczta.wp.pl', 'pro.wp.pl',
+        'o2.eu', 'buziaczek.pl', 'amorki.pl', 'lubie.to', 'poczta.interia.pl',
+        # --- GOOGLE ---
+        'gmail.com', 'googlemail.com',
+        # --- MICROSOFT ---
+        'hotmail.com', 'outlook.com', 'live.com', 'msn.com', 'windowslive.com', 'passport.com',
+        'outlook.eu', 'hotmail.co.uk', 'live.co.uk',
+        # --- YAHOO & AOL ---
+        'yahoo.com', 'ymail.com', 'rocketmail.com', 'aol.com', 'aim.com',
+        'yahoo.co.uk', 'yahoo.pl',
+        # --- APPLE ---
+        'icloud.com', 'me.com', 'mac.com',
+        # --- BEZPIECZNE / SZYFROWANE ---
+        'protonmail.com', 'protonmail.ch', 'proton.me', 'pm.me',
+        'tutanota.com', 'tutanota.de', 'tutamail.com', 'tuta.io', 'keemail.me',
+        # --- INNE GLOBALNE ---
+        'mail.com', 'zoho.com', 'zoho.eu', 'yandex.com', 'yandex.ru',
+        'gmx.com', 'gmx.net', 'gmx.de', 'fastmail.com', 'fastmail.fm', 'hey.com',
+        'inbox.com', 'mail.ru', 'qq.com', '163.com', '126.com', 'sina.com',
+    }
+
+    # Wzorce placeholder/przykładowych emaili z formularzy kontaktowych
+    _PLACEHOLDER_LOCAL_PARTS = {
+        'your', 'yourname', 'youremail', 'yourmail', 'name', 'email', 'mail',
+        'adres', 'twoj', 'twojmail', 'twojemail', 'uzytkownik', 'user',
+        'test', 'demo', 'sample', 'placeholder', 'example', 'admin123',
+    }
+
     for email in unique:
-        domain_part = email.split('@')[-1] if '@' in email else ""
+        parts = email.split('@')
+        if len(parts) != 2:
+            continue
+        local, domain_part = parts[0], parts[1]
+
+        # Blokada emaili wyciągniętych z atrybutów placeholder/value formularzy
+        if email in form_placeholder_emails:
+            logger.debug(f"[RESEARCHER] Odrzucono placeholder formularza: {email}")
+            continue
+
         if domain_part in freemail_domains:
             continue
-        
-        if email.endswith(('.png', '.jpg', '.jpeg', '.gif', '.css', '.js', '.svg', '.woff', '.webp', '.mp4')): continue
-        if any(x in email for x in ['sentry', 'noreply', 'no-reply', 'example', 'domain', 'email.com', 'bootstrap', 'react']): continue
-        if len(email) < 5 or len(email) > 60: continue
+
+        if email.endswith(('.png', '.jpg', '.jpeg', '.gif', '.css', '.js', '.svg', '.woff', '.webp', '.mp4')):
+            continue
+
+        # Blokada śmieciowych słów kluczowych w całym adresie
+        if any(x in email for x in ['sentry', 'noreply', 'no-reply', 'example.com', 'example.pl',
+                                      'bootstrap', 'react', 'webmaster', 'donotreply', 'do-not-reply',
+                                      'spam', 'test@', 'demo@', 'sample@']):
+            continue
+
+        # Blokada placeholderów w części lokalnej (np. "email@firma.pl", "your@firma.pl")
+        if local.lower() in _PLACEHOLDER_LOCAL_PARTS:
+            continue
+
+        if len(email) < 6 or len(email) > 60:
+            continue
+
         clean.append(email)
         
     return clean
@@ -130,6 +173,7 @@ class TitanScraper:
                     data = response.json().get('data', {})
                     if not data.get('markdown') and not data.get('html'):
                         return None
+                    critical_monitor.record_success("firecrawl")
                     return {
                         "markdown": data.get('markdown', ""),
                         "html": data.get('html', "")
@@ -137,9 +181,21 @@ class TitanScraper:
                 elif response.status_code == 429:
                     logger.warning(f"⚠️ RATE LIMIT (429) dla {url}. Zwalniam...")
                     return None
-                return None
+                elif response.status_code in (402, 401):
+                    # Brak kredytów lub nieprawidłowy klucz — natychmiastowy stop
+                    critical_monitor.trigger_stop(
+                        api_name="firecrawl",
+                        reason=f"Firecrawl API zwróciło HTTP {response.status_code} — "
+                               f"{'wyczerpane kredyty' if response.status_code == 402 else 'nieprawidłowy klucz API'}.",
+                        consecutive=1,
+                    )
+                    return None
+                else:
+                    critical_monitor.record_failure("firecrawl")
+                    return None
             except Exception as e:
                 logger.error(f"Błąd scrapowania {url}: {e}")
+                critical_monitor.record_failure("firecrawl")
                 return None
 
     async def map_site(self, url): 
@@ -297,6 +353,87 @@ async def _get_content_titan_strategy(url: str, domain: str) -> dict:
     logger.info(f"✅ Cached scraping result for {domain} (14 days TTL)")
     
     return scraping_result
+
+
+class _GatekeeperVerdict(BaseModel):
+    """Wewnętrzny model werdyktu post-scrape Gatekeepera."""
+    approved: bool = Field(
+        description="True jeśli firma SPEŁNIA wymagania klienta. False jeśli narusza zakazy lub jest całkowicie poza ICP."
+    )
+    reason: str = Field(
+        description="Jedno zdanie uzasadniające decyzję."
+    )
+
+
+def _ai_gatekeeper_check(
+    research: CompanyResearch,
+    company_name: str,
+    company_domain: str,
+    client,
+    researcher_model: str,
+) -> tuple[bool, str]:
+    """
+    POST-SCRAPE GATEKEEPER: Weryfikuje czy firma — po pełnym zwiadzie strony WWW —
+    nadal spełnia wymagania klienta (ICP + negative_constraints).
+
+    Uruchamiany po analizie AI, przed zapisem statusu ANALYZED.
+    Używa taniego modelu — to tylko weryfikacja binarna, nie analiza.
+
+    Returns:
+        (approved: bool, reason: str)
+    """
+    constraints = (getattr(client, "negative_constraints", "") or "").strip()
+    icp = (getattr(client, "ideal_customer_profile", "") or "").strip()
+    industry = (getattr(client, "industry", "") or "").strip()
+
+    # Bez żadnych ograniczeń — przepuszczamy od razu
+    if not constraints and not icp:
+        return True, "Brak ograniczeń klienta — automatycznie zatwierdzona."
+
+    hard_block_section = ""
+    if constraints:
+        hard_block_section = f"""
+=== !! TWARDE ZAKAZY — BEZWZGLĘDNE !! ===
+Pole poniżej może zawierać dwa typy ograniczeń: dotyczące TYPÓW FIRM oraz dotyczące treści maili.
+Ty stosujesz TYLKO zakazy dotyczące TYPÓW FIRM, branż i rozmiaru.
+Zakazy dotyczące treści lub stylu maili → ignoruj.
+
+Zakazy firm do zastosowania:
+{constraints}
+
+Jeśli firma JAKKOLWIEK pasuje do zakazów firm → odrzuć (approved=False).
+"""
+
+    system_prompt = f"""Jesteś ostatnim filtrem przed wysłaniem cold maila B2B. Masz pełną wiedzę o firmie ze scrapingu jej strony. Twoja decyzja jest ostateczna.
+{hard_block_section}
+=== PROFIL KLIENTA (czego szuka) ===
+Branża: {industry}
+Idealny profil klienta (ICP): {icp}
+
+=== FIRMA DO OCENY ===
+Nazwa: {company_name}
+Domena: {company_domain}
+Czym się zajmuje: {research.summary}
+Produkty/usługi: {", ".join(research.key_products or [])}
+Kim są ich klienci: {research.target_audience}
+
+=== ZASADY OCENY ===
+1. Jeśli firma narusza którykolwiek TWARDY ZAKAZ → approved=False, bez wyjątków.
+2. Jeśli firma choćby częściowo pasuje do ICP i nie narusza zakazów → approved=True.
+3. Jeśli nie ma zakazów i firma jest blisko branży → approved=True.
+4. W razie wątpliwości co do ICP — przepuść. W razie wątpliwości co do zakazu — ODRZUĆ."""
+
+    try:
+        gatekeeper_llm = create_structured_llm(researcher_model, _GatekeeperVerdict, temperature=0.0)
+        verdict = gatekeeper_llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content="Wydaj werdykt dla powyższej firmy."),
+        ])
+        return verdict.approved, verdict.reason
+    except Exception as e:
+        logger.error(f"[RESEARCHER GATEKEEPER] Błąd LLM: {e}", exc_info=True)
+        # Przy błędzie przepuszczamy — nie blokujemy lead przez awarię narzędzia
+        return True, f"Błąd gatekeepera ({type(e).__name__}) — przepuszczono domyślnie."
 
 
 def analyze_lead(session: Session, lead_id: int):
@@ -483,6 +620,32 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
         session.commit()
         return
 
+    # 2b. POST-SCRAPE GATEKEEPER — weryfikacja po pełnym zwiadzie
+    gk_approved, gk_reason = _ai_gatekeeper_check(
+        research=research,
+        company_name=company.name,
+        company_domain=company.domain,
+        client=client,
+        researcher_model=researcher_model,
+    )
+
+    if not gk_approved:
+        logger.warning(
+            f"[RESEARCHER GATEKEEPER] Odrzucono {company.name} ({company.domain}): {gk_reason}"
+        )
+        print(f"      🚫 GATEKEEPER ODRZUCIŁ: {gk_reason}")
+        lead.status = "MANUAL_CHECK"
+        lead.ai_confidence_score = 0
+        lead.ai_analysis_summary = (
+            f"[GATEKEEPER ODRZUCIŁ — NIEZGODNE Z WYMAGANIAMI KLIENTA]\n"
+            f"Powód: {gk_reason}\n"
+            f"SUMMARY: {research.summary}"
+        )
+        session.commit()
+        return
+
+    print(f"      ✅ GATEKEEPER: Firma zatwierdzona. {gk_reason}")
+
     # 3. SCORING & SELECTION
     combined_emails = list(set((research.contact_emails or []) + regex_emails))
     
@@ -515,13 +678,38 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
     final_email = None
     verification_note = ""
     
+    debounce_is_down = False
+
     for candidate, score in scored:
         if score < -20: continue # Szkoda kasy na śmieci
-        
+
         print(f"      🛡️ Weryfikacja DeBounce dla: {candidate}...")
         status = verify_email_deep(candidate)  # ← This now uses Redis cache!
-        
-        if status in ["OK", "RISKY"]:
+
+        if status == "API_DOWN":
+            # DeBounce niedostępny — blokujemy wysyłkę, zostawiamy lead do retry
+            debounce_is_down = True
+            print(f"         🚨 DeBounce API niedostępny — wstrzymuję weryfikację!")
+            logger.warning("[RESEARCHER] DeBounce API niedostępny — lead pozostaje PENDING do retry")
+            # Alert email do operatora (max 1 na 4h)
+            send_operator_alert(
+                alert_type="debounce_down",
+                subject="DeBounce API niedostępny — wysyłka wstrzymana",
+                body=(
+                    "DeBounce API zwróciło błąd (brak kredytów lub awaria serwera).\n\n"
+                    "Silnik NEXUS automatycznie wstrzymał weryfikację maili.\n"
+                    "Leady pozostają w statusie PENDING i zostaną przetworzone\n"
+                    "gdy DeBounce znów będzie dostępny.\n\n"
+                    "Działanie wymagane:\n"
+                    "  1. Sprawdź stan konta DeBounce: https://debounce.io\n"
+                    "  2. Doładuj kredyty jeśli wyczerpane\n"
+                    "  3. Silnik wznowi wysyłkę automatycznie przy następnym cyklu\n\n"
+                    "Żadne emaile nie zostały wysłane bez weryfikacji DeBounce."
+                ),
+            )
+            break  # Nie sprawdzaj kolejnych — wszystkie odpadną tak samo
+
+        elif status in ["OK", "RISKY"]:
             final_email = candidate
             verification_note = f"[VERIFIED: {status}]"
             # STATS: email verified
@@ -533,6 +721,14 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
             break # Mamy zwycięzcę
         else:
             print(f"         ❌ Adres INVALID/SPAMTRAP. Próbuję następny...")
+
+    if debounce_is_down:
+        # Lead zostaje jako NEW — zostanie ponownie przetworzony gdy DeBounce wróci
+        # (scraping website jest cache'owany w Redis 14 dni — brak dodatkowego kosztu przy retry)
+        lead.status = "NEW"
+        lead.ai_confidence_score = 0
+        session.commit()
+        return  # Przerywamy — nie zapisuj błędnych danych
 
     if not final_email and scored:
         verification_note = "All emails failed verification."

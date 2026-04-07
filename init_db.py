@@ -34,6 +34,23 @@ _COLUMN_MIGRATIONS = [
     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS reply_sentiment VARCHAR",
     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS reply_analysis VARCHAR",
     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMP",
+
+    # Tabela: clients — pola identyfikacyjne/CRM (dodane w Phase 4+)
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS nip VARCHAR",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS legal_name VARCHAR",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS payload_order_id INTEGER",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS payload_brief_id INTEGER",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS mode VARCHAR DEFAULT 'SALES'",
+
+    # Tabela: clients — strategiczne DNA (tone, constraints, case studies)
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS tone_of_voice VARCHAR",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS negative_constraints TEXT",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS case_studies TEXT",
+
+    # Tabela: clients — konfiguracja modeli LLM per-agent
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS scout_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS researcher_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS writer_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
 ]
 
 

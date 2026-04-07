@@ -313,6 +313,7 @@ def sync_briefs_to_clients(session: Session) -> dict:
         rows = _fetch_active_briefs(session)
     except Exception as e:
         logger.error(f"[SYNC] Błąd odczytu tabel Payload: {e}")
+        session.rollback()  # CRITICAL: reset stanu transakcji — bez tego connection pool zwraca "aborted" connection do kolejnych sesji
         return result
 
     if not rows:

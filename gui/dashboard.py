@@ -382,51 +382,124 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 FILES_DIR = os.path.join(ROOT_DIR, 'files')
 PID_FILE = os.path.join(ROOT_DIR, 'engine.pid')
 LOG_FILE = os.path.join(ROOT_DIR, 'engine.log')
+HEARTBEAT_FILE = os.path.join(ROOT_DIR, 'engine.heartbeat')
+_HEARTBEAT_TIMEOUT = 60    # sekund — jeśli brak heartbeatu >60s, silnik uznany za zawieszony
+_ENGINE_START_GRACE = 120  # sekund — grace period przy starcie (backup+sync mogą zająć chwilę)
 
 os.makedirs(FILES_DIR, exist_ok=True)
 
 # --- ENGINE MANAGER ---
-def is_engine_running():
-    """Sprawdza czy proces main.py żyje."""
-    if os.path.exists(PID_FILE):
+def is_engine_running() -> bool:
+    """
+    Sprawdza czy silnik main.py jest żywy i aktywny.
+    Dwuetapowa weryfikacja:
+    1. PID istnieje w systemie (proces żyje)
+    2. Heartbeat jest świeży < 60s (silnik nie jest zawieszony)
+    """
+    if not os.path.exists(PID_FILE):
+        return False
+
+    try:
+        with open(PID_FILE, 'r') as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)  # Wysyła sygnał 0 — sprawdza czy PID istnieje
+    except (OSError, ValueError):
+        # Stale PID — silnik crashował, sprzątamy
         try:
-            with open(PID_FILE, 'r') as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)
+            os.remove(PID_FILE)
+        except Exception:
+            pass
+        try:
+            if os.path.exists(HEARTBEAT_FILE):
+                os.remove(HEARTBEAT_FILE)
+        except Exception:
+            pass
+        return False
+
+    # PID żyje. Sprawdź heartbeat.
+    if os.path.exists(HEARTBEAT_FILE):
+        try:
+            with open(HEARTBEAT_FILE, 'r') as f:
+                ts = float(f.read().strip())
+            age = time.time() - ts
+            if age > _HEARTBEAT_TIMEOUT:
+                # Silnik zawieszony — PID żyje, ale pętla główna nie bije
+                return False
             return True
         except (OSError, ValueError):
-            return False
-    return False
+            pass
+
+    # Brak heartbeatu = silnik jeszcze startuje (pierwsze sekundy: backup + sync)
+    # Grace period oparty o wiek PID file
+    try:
+        pid_age = time.time() - os.path.getmtime(PID_FILE)
+        return pid_age < _ENGINE_START_GRACE
+    except Exception:
+        return True
+
 
 def start_engine():
-    """Uruchamia main.py z flagą -u (unbuffered logs)."""
-    if is_engine_running(): return
-    
-    if os.path.exists(LOG_FILE): open(LOG_FILE, 'w').close()
+    """Uruchamia main.py jako proces tła."""
+    if is_engine_running():
+        return
 
-    with open(LOG_FILE, "a") as log:
-        process = subprocess.Popen(
-            [sys.executable, "-u", "main.py"],
-            cwd=ROOT_DIR,
-            stdout=log,
-            stderr=log
-        )
-    
-    with open(PID_FILE, 'w') as f:
-        f.write(str(process.pid))
+    # Wyczyść stare pliki sterujące (heartbeat, PID) i CRITICAL STOP flag
+    for f in (PID_FILE, HEARTBEAT_FILE):
+        try:
+            if os.path.exists(f):
+                os.remove(f)
+        except Exception:
+            pass
+    # Usuń flagę krytycznego stopu przy restarcie operatora
+    try:
+        from app import critical_monitor
+        critical_monitor.clear_stop()
+    except Exception:
+        pass
+
+    # Truncate log
+    try:
+        open(LOG_FILE, 'w').close()
+    except Exception:
+        pass
+
+    log_handle = open(LOG_FILE, "a")
+    process = subprocess.Popen(
+        [sys.executable, "-u", "main.py"],
+        cwd=ROOT_DIR,
+        stdout=log_handle,
+        stderr=log_handle,
+    )
+    # Zapisz PID od razu po Popen
+    try:
+        with open(PID_FILE, 'w') as f:
+            f.write(str(process.pid))
+    except Exception as e:
+        print(f"Błąd zapisu PID: {e}")
+
 
 def stop_engine():
-    """Zabija proces silnika."""
+    """Zatrzymuje silnik (SIGTERM) i sprząta pliki sterujące."""
+    pid = None
     if os.path.exists(PID_FILE):
         try:
             with open(PID_FILE, 'r') as f:
                 pid = int(f.read().strip())
             os.kill(pid, signal.SIGTERM)
         except Exception as e:
-            print(f"Błąd zatrzymywania: {e}")
+            print(f"Błąd zatrzymywania silnika: {e}")
         finally:
-            if os.path.exists(PID_FILE):
+            try:
                 os.remove(PID_FILE)
+            except Exception:
+                pass
+
+    # Usuń heartbeat — GUI natychmiast widzi OFFLINE
+    try:
+        if os.path.exists(HEARTBEAT_FILE):
+            os.remove(HEARTBEAT_FILE)
+    except Exception:
+        pass
 
 def get_engine_logs(lines=200):
     """Czyta logi, odwraca kolejność (najnowsze na górze)."""
@@ -460,23 +533,22 @@ try:
         init_db()
         st.session_state.db_initialized = True
 
-    # --- AUTO-SYNC przy każdym renderze dashboardu ---
+    # --- AUTO-SYNC — max co 60 sekund, nie przy każdym rerenderze ---
     from app.brief_sync import sync_briefs_to_clients
-    _auto_sync = sync_briefs_to_clients(session)
-
-    # Pokaż powiadomienie jeśli coś się zmieniło
-    _sync_created = _auto_sync.get("created", 0)
-    _sync_updated = _auto_sync.get("updated", 0)
-    _sync_deactivated = _auto_sync.get("deactivated", 0)
-    if _sync_created or _sync_updated or _sync_deactivated:
-        _parts = []
-        if _sync_created:
-            _parts.append(f"{_sync_created} nowych")
-        if _sync_updated:
-            _parts.append(f"{_sync_updated} zaktualizowanych")
-        if _sync_deactivated:
-            _parts.append(f"{_sync_deactivated} dezaktywowanych")
-        st.toast(f"Brief Sync: {', '.join(_parts)}", icon="🔄")
+    _now_ts = time.time()
+    _last_sync = st.session_state.get("last_sync_ts", 0)
+    if (_now_ts - _last_sync) >= 60:
+        _auto_sync = sync_briefs_to_clients(session)
+        st.session_state.last_sync_ts = _now_ts
+        _sync_created = _auto_sync.get("created", 0)
+        _sync_updated = _auto_sync.get("updated", 0)
+        _sync_deactivated = _auto_sync.get("deactivated", 0)
+        if _sync_created or _sync_updated or _sync_deactivated:
+            _parts = []
+            if _sync_created: _parts.append(f"{_sync_created} nowych")
+            if _sync_updated: _parts.append(f"{_sync_updated} zaktualizowanych")
+            if _sync_deactivated: _parts.append(f"{_sync_deactivated} dezaktywowanych")
+            st.toast(f"Brief Sync: {', '.join(_parts)}", icon="🔄")
 
     # ==============================================================================
     # SIDEBAR: CENTRUM DOWODZENIA
@@ -495,7 +567,20 @@ try:
                 time.sleep(1)
                 st.rerun()
         else:
-            st.markdown('<div class="engine-status-box status-offline">🔴 OFFLINE</div>', unsafe_allow_html=True)
+            # Sprawdź czy silnik zatrzymał się z powodu awarii API
+            try:
+                from app import critical_monitor as _cm
+                _stopped, _stop_reason = _cm.is_stopped()
+            except Exception:
+                _stopped, _stop_reason = False, ""
+
+            if _stopped:
+                st.markdown('<div class="engine-status-box status-offline">🚨 ZATRZYMANY — AWARIA API</div>', unsafe_allow_html=True)
+                st.error(f"**Krytyczna awaria:** {_stop_reason}")
+                st.info("Rozwiąż problem z API, a następnie kliknij URUCHOM — flaga zostanie automatycznie wyczyszczona.")
+            else:
+                st.markdown('<div class="engine-status-box status-offline">🔴 OFFLINE</div>', unsafe_allow_html=True)
+
             if st.button("URUCHOM", width='stretch'):
                 start_engine()
                 time.sleep(1)
@@ -528,7 +613,15 @@ try:
         client_names = [c.name for c in all_clients]
         client_names.insert(0, "➕ DODAJ FIRMĘ")
 
-        selected_option = st.radio("WYBIERZ AGENTA:", client_names, index=1 if len(all_clients) > 0 else 0)
+        # Zapamiętaj wybranego klienta w session_state — st.rerun() nie resetuje wyboru
+        if "selected_client" not in st.session_state:
+            st.session_state.selected_client = client_names[1] if len(all_clients) > 0 else client_names[0]
+        if st.session_state.selected_client not in client_names:
+            st.session_state.selected_client = client_names[1] if len(all_clients) > 0 else client_names[0]
+
+        _default_idx = client_names.index(st.session_state.selected_client)
+        selected_option = st.radio("WYBIERZ AGENTA:", client_names, index=_default_idx, key="client_radio")
+        st.session_state.selected_client = selected_option
 
         client = None
         if selected_option != "➕ DODAJ FIRMĘ":

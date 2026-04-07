@@ -11,6 +11,7 @@ dependencies = [
     "firecrawl-py>=4.12.0",
     "fpdf2>=2.8.5",
     "google-cloud-kms>=3.12.0",
+    "google-cloud-storage>=3.10.1",
     "httpx>=0.28.1",
     "langchain>=1.2.0",
     "langchain-anthropic>=0.3.0",

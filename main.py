@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import os
+import time
 import random
 import socket
 import traceback
@@ -53,10 +54,18 @@ from app.warmup import calculate_daily_limit
 from app.rodo_manager import is_opted_out
 from app import stats_manager
 from app.brief_sync import sync_briefs_to_clients
+from app import critical_monitor
 
 # --- KONFIGURACJA SKALOWANIA ---
 MAX_CONCURRENT_AGENTS = 20
 DISPATCHER_INTERVAL = 5
+
+# --- HEARTBEAT (sygnał życia dla GUI) ---
+HEARTBEAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine.heartbeat")
+
+# --- DNS CACHE (unikamy DNS lookup co 5s per klient) ---
+_dns_cache: dict[str, tuple[bool, float]] = {}  # domain -> (passed, timestamp)
+_DNS_CACHE_TTL = 3600  # 1 godzina
 
 # --- OKIENKO WYSYŁKOWE (godziny lokalne) ---
 SENDING_WINDOW_START = 8   # 08:00
@@ -252,14 +261,24 @@ async def _handle_drafts(
     if PHASE2_ENABLED:
         queue_manager.register_worker(worker_id, client.id, "checking_drafts")
         
-    # DNS VALIDATOR (Wektor 4 Antyspam)
+    # DNS VALIDATOR (Wektor 4 Antyspam) — wynik cachowany na 1h, nie sprawdzamy co 5s
     from app.tools import verify_sender_dns
     if client.smtp_user and "@" in client.smtp_user:
         domain = client.smtp_user.split("@")[1]
-        dns_status = verify_sender_dns(domain)
-        if not dns_status.get("spf_ok") or not dns_status.get("dmarc_ok"):
-            logger.error(f"🛑 [BLOKADA ANTYSZAM] Domena '{domain}' klienta '{client.name}' nie posiada poprawnych rekordów SPF lub DMARC. Wysyłka wstrzymana.")
-            # STATS: blokada DNS
+        cached_dns = _dns_cache.get(domain)
+        if cached_dns is None or (time.time() - cached_dns[1]) > _DNS_CACHE_TTL:
+            try:
+                dns_status = verify_sender_dns(domain)
+                dns_ok = dns_status.get("spf_ok", False) and dns_status.get("dmarc_ok", False)
+            except Exception as e:
+                logger.warning(f"[DNS] Błąd sprawdzania DNS dla {domain}: {e} — przepuszczam.")
+                dns_ok = True  # Przy błędzie DNS nie blokujemy wysyłki
+            _dns_cache[domain] = (dns_ok, time.time())
+        else:
+            dns_ok = cached_dns[0]
+
+        if not dns_ok:
+            logger.error(f"🛑 [BLOKADA ANTYSPAM] Domena '{domain}' klienta '{client.name}' — brak SPF/DMARC. Wysyłka wstrzymana.")
             try:
                 stats_manager.increment_dns_block(session, client.id)
             except Exception:
@@ -393,7 +412,18 @@ async def _handle_research(
     if PHASE2_ENABLED:
         queue_manager.register_worker(worker_id, client.id, "researching")
 
-    await analyze_lead_async(session, new_lead.id)
+    try:
+        await asyncio.wait_for(analyze_lead_async(session, new_lead.id), timeout=200.0)
+    except asyncio.TimeoutError:
+        logger.error(
+            f"[{client.name}] ⏱️ TIMEOUT: Research dla {new_lead.company.domain} "
+            f"przekroczył 200s — oznaczam MANUAL_CHECK."
+        )
+        try:
+            new_lead.status = "MANUAL_CHECK"
+            session.commit()
+        except Exception:
+            session.rollback()
 
     if PHASE2_ENABLED:
         queue_manager.unmark_processing(new_lead.id)
@@ -467,6 +497,11 @@ async def run_client_cycle(
         if not worker_id:
             worker_id = f"{socket.gethostname()}_worker_{client_id}"
 
+        def _is_still_active() -> bool:
+            """Re-sprawdza status klienta w bazie — guard przed długimi operacjami."""
+            session.expire(client)  # wymuś odświeżenie z DB
+            return client.status == "ACTIVE"
+
         try:
             # 1. WERYFIKACJA STATUSU
             client = session.query(Client).filter(Client.id == client_id).first()
@@ -495,21 +530,25 @@ async def run_client_cycle(
             if in_window:
                 # --- FAZA 1: WYSYŁKA / DRAFTY ---
                 if done_today < limit:
+                    if not _is_still_active(): return False
                     if await _handle_drafts(session, client, worker_id, use_queues):
                         return True
 
                 # --- FAZA 2: PISANIE (ANALYZED → DRAFTED) ---
                 if pipeline["analyzed"] > 0:
+                    if not _is_still_active(): return False
                     if await _handle_writing(session, client, worker_id, use_queues):
                         return True
 
                 # --- FAZA 3: RESEARCH (NEW → ANALYZED) ---
                 if pipeline["new"] > 0:
+                    if not _is_still_active(): return False
                     if await _handle_research(session, client, worker_id, use_queues):
                         return True
 
                 # --- FAZA 4: SCOUTING (jeśli pipeline za mały) ---
                 if need_more:
+                    if not _is_still_active(): return False
                     if await _handle_scouting(session, client, worker_id):
                         return True
 
@@ -525,16 +564,19 @@ async def run_client_cycle(
 
                 # --- Research (NEW → ANALYZED) ---
                 if pipeline["new"] > 0:
+                    if not _is_still_active(): return False
                     if await _handle_research(session, client, worker_id, use_queues):
                         return True
 
                 # --- Pisanie (ANALYZED → DRAFTED) — przygotowujemy gotowe maile ---
                 if pipeline["analyzed"] > 0:
+                    if not _is_still_active(): return False
                     if await _handle_writing(session, client, worker_id, use_queues):
                         return True
 
                 # --- Scouting (jeśli brakuje leadów na jutro) ---
                 if tomorrow_need > 0:
+                    if not _is_still_active(): return False
                     if await _handle_scouting(session, client, worker_id):
                         return True
 
@@ -587,9 +629,12 @@ async def nexus_core_loop():
     await asyncio.to_thread(backup_manager.perform_backup)
 
     logger.info("🔄 Synchronizuję briefs z PayloadCMS...")
-    with Session(engine) as sync_session:
-        sync_result = await asyncio.to_thread(sync_briefs_to_clients, sync_session)
-        _log_sync_result(sync_result)
+    try:
+        with Session(engine) as sync_session:
+            sync_result = await asyncio.to_thread(sync_briefs_to_clients, sync_session)
+            _log_sync_result(sync_result)
+    except Exception as _sync_err:
+        logger.warning(f"[SYNC] Pominięto sync startowy (brak tabel Payload?): {_sync_err}")
 
     if PHASE2_ENABLED and USE_QUEUES:
         logger.info("📥 Populating queues from database...")
@@ -597,6 +642,25 @@ async def nexus_core_loop():
 
     while True:
         try:
+            # CRITICAL STOP CHECK — sprawdzamy czy API krytyczne nie padło
+            _stopped, _stop_reason = critical_monitor.is_stopped()
+            if _stopped:
+                logger.critical(f"🛑 CRITICAL STOP — silnik zatrzymuje się: {_stop_reason}")
+                print(f"\n{'='*60}")
+                print(f"🛑 NEXUS ENGINE — CRITICAL STOP")
+                print(f"{'='*60}")
+                print(f"Powód: {_stop_reason}")
+                print(f"Zaloguj się do panelu i kliknij URUCHOM aby wznowić.")
+                print(f"{'='*60}\n")
+                break  # Wyjście z pętli while → run_forever() posprząta i skończy
+
+            # HEARTBEAT — zapisujemy timestamp żeby GUI wiedziało że silnik żyje
+            try:
+                with open(HEARTBEAT_FILE, "w") as _hb:
+                    _hb.write(str(time.time()))
+            except Exception:
+                pass
+
             now = datetime.now()
 
             # BACKUP CO 6 GODZIN
@@ -608,9 +672,12 @@ async def nexus_core_loop():
             # BRIEF SYNC CO 30 MINUT (wykrywanie zmian w Payload)
             if (now - last_sync_time).total_seconds() > BRIEF_SYNC_INTERVAL:
                 logger.info("🔄 Sprawdzam zmiany w briefach...")
-                with Session(engine) as sync_session:
-                    sync_result = await asyncio.to_thread(sync_briefs_to_clients, sync_session)
-                    _log_sync_result(sync_result)
+                try:
+                    with Session(engine) as sync_session:
+                        sync_result = await asyncio.to_thread(sync_briefs_to_clients, sync_session)
+                        _log_sync_result(sync_result)
+                except Exception as _sync_err:
+                    logger.warning(f"[SYNC] Pominięto sync (brak tabel Payload?): {_sync_err}")
                 last_sync_time = now
 
             # STATYSTYKI CO 5 MINUT (Phase 2)
@@ -679,6 +746,11 @@ async def run_forever():
                     logger.info("✅ Workers cleaned up")
                 except Exception as e:
                     logger.error(f"Cleanup error: {e}")
+            try:
+                if os.path.exists(HEARTBEAT_FILE):
+                    os.remove(HEARTBEAT_FILE)
+            except Exception:
+                pass
             break
         except Exception as e:
             console.print(f"[bold red]💀 CRITICAL SYSTEM CRASH: {e}[/bold red]")

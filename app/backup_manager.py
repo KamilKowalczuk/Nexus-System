@@ -84,7 +84,7 @@ class BackupManager:
             logger.warning(f"⚠️ [GCS] Brak zmiennej środowiskowej GCP: {e} — pomijam upload.")
             return False
         except Exception as e:
-            logger.error(f"❌ [GCS] Błąd uploadu: {e}")
+            logger.warning(f"⚠️ [GCS] Upload pominięty: {e} — backup lokalny zachowany.")
             return False
 
     def perform_backup(self) -> bool:
@@ -121,6 +121,14 @@ class BackupManager:
 
             # 2. Obsługa PostgreSQL — pg_dump CAŁEJ bazy (Nexus + PayloadCMS)
             elif self.db_url.startswith("postgresql") or self.db_url.startswith("postgres"):
+                pg_dump_bin = shutil.which("pg_dump")
+                if not pg_dump_bin:
+                    logger.warning(
+                        "⚠️ [BACKUP] pg_dump nie jest zainstalowany — pomijam backup. "
+                        "Na serwerze zainstaluj postgresql-client w Dockerfile."
+                    )
+                    return False
+
                 parsed = urlparse(self.db_url)
                 db_name = parsed.path.lstrip("/")
                 user = parsed.username
@@ -137,7 +145,7 @@ class BackupManager:
 
                 # pg_dump bez filtrów tabel/schematów = CAŁA baza (Nexus + Payload)
                 cmd = [
-                    "pg_dump",
+                    pg_dump_bin,
                     "-h", host,
                     "-p", str(port),
                     "-U", user,

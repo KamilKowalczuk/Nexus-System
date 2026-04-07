@@ -12,6 +12,7 @@ import requests
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 from app.cache_manager import cache_manager
+from app import critical_monitor
 
 load_dotenv()
 logger = logging.getLogger("tools")
@@ -190,16 +191,27 @@ def verify_email_deep(email: str) -> str:
             # ==========================================
             cache_manager.set_email_verification(email, result, api="debounce")
             logger.info(f"✅ API call: {email} → {result} (cached for 7 days)")
-            
+            critical_monitor.record_success("debounce")
             return result
-            
+
         else:
-            logger.warning(f"⚠️ DeBounce API HTTP Error: {response.status_code}")
-            return "UNKNOWN"
+            status_code = response.status_code
+            logger.warning(f"⚠️ DeBounce API HTTP Error: {status_code}")
+            if status_code == 402:
+                # Brak kredytów — natychmiastowy stop, nie czekamy na próg
+                critical_monitor.trigger_stop(
+                    api_name="debounce",
+                    reason="DeBounce API zwróciło HTTP 402 — wyczerpane kredyty. Wysyłka wstrzymana.",
+                    consecutive=1,
+                )
+            else:
+                critical_monitor.record_failure("debounce")
+            return "API_DOWN"
 
     except requests.exceptions.Timeout:
         logger.error(f"⏱️ DeBounce API timeout for {email}")
-        return "UNKNOWN"
+        critical_monitor.record_failure("debounce")
+        return "API_DOWN"
     except Exception as e:
         logger.error(f"❌ DeBounce API error for {email}: {e}")
         # Fallback to MX check

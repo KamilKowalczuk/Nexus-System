@@ -1,9 +1,31 @@
-# Baza danych (PostgreSQL) jest na Railway — nie ma tu lokalnego postgresa
-
 services:
+  # 0. BAZA DANYCH (PostgreSQL) — lokalnie do testów
+  # PRODUKCJA: zakomentuj ten blok — Railway dostarcza DB przez DATABASE_URL w .env
+  # TESTY LOKALNE: odkomentuj i zmień w .env: DATABASE_URL=postgresql://nexus:nexus_password@localhost:5432/agency_os
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: agency_db
+  #   restart: always
+  #   environment:
+  #     POSTGRES_USER: nexus
+  #     POSTGRES_PASSWORD: nexus_password
+  #     POSTGRES_DB: agency_os
+  #   ports:
+  #     - "127.0.0.1:5432:5432"
+  #   volumes:
+  #     - ./data/postgres:/var/lib/postgresql/data
+  #   networks:
+  #     - agency_net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U nexus -d agency_os"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 10
+  #     start_period: 10s
+
   # 1. KOLEJKA (Redis) — tylko lokalnie, nie wystawiony na zewnątrz
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     container_name: agency_redis
     restart: always
     ports:
@@ -12,21 +34,33 @@ services:
       - ./data/redis:/data
     networks:
       - agency_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
-  # 2. SILNIK NEXUS (główna aplikacja)
+  # 2. SILNIK NEXUS (dashboard + silnik uruchamiany z GUI)
   nexus:
     build: .
     container_name: agency_nexus
     restart: always
     env_file:
       - .env
+    environment:
+      # DATABASE_URL NIE jest tutaj — brana z .env (Railway lub lokalny Postgres)
+      # Redis jest lokalny w tej sieci Dockera
+      REDIS_HOST: "redis"
     depends_on:
-      - redis
+      # postgres:              # odkomentuj jeśli używasz lokalnego Postgresa (blok postgres wyżej)
+      #   condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8501:8501"
     volumes:
-      - ./files:/app/files
-      - ./backups:/app/backups
+      - ./files:/app/files          # pliki, załączniki, backupy (backup_manager pisze tu)
     networks:
       - agency_net
 

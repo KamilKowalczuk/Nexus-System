@@ -56,7 +56,13 @@ def _get_key_name() -> str:
 
 
 def _build_kms_client():
-    """Tworzy klienta KMS z credentialami Service Account z env vars."""
+    """
+    Tworzy klienta KMS z credentialami Service Account z env vars.
+
+    WAŻNE: Używamy REST transport zamiast domyślnego gRPC.
+    grpcio inicjalizowany w wątku roboczym (asyncio.to_thread) powoduje SIGSEGV
+    z powodu ograniczeń biblioteki C. REST transport działa bezpiecznie w każdym wątku.
+    """
     from google.cloud import kms
     from google.oauth2 import service_account
     import re
@@ -84,7 +90,11 @@ def _build_kms_client():
         scopes=["https://www.googleapis.com/auth/cloudkms"],
     )
 
-    return kms.KeyManagementServiceClient(credentials=credentials)
+    # REST transport: bezpieczne w wątkach, brak grpcio (który segfaultuje w non-main thread)
+    return kms.KeyManagementServiceClient(
+        credentials=credentials,
+        transport="rest",
+    )
 
 
 def encrypt_credential(plain_value: str) -> str:

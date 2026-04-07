@@ -11,7 +11,7 @@ import time
 import mimetypes
 import logging
 import ctypes
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 PL_TZ = ZoneInfo("Europe/Warsaw")
@@ -169,6 +169,10 @@ def process_followups(session: Session, client: Client, use_queue: bool = False)
         last_action = lead.sent_at or lead.last_action_at
         if not last_action:
             continue
+
+        # Normalizuj do PL_TZ — Railway zwraca naive TIMESTAMP (przechowywany jako UTC)
+        if last_action.tzinfo is None:
+            last_action = last_action.replace(tzinfo=timezone.utc).astimezone(PL_TZ)
 
         delay = FOLLOWUP_DELAYS.get(lead.step_number, timedelta(days=7))
         if (now - last_action) < delay:

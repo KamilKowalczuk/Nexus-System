@@ -380,7 +380,7 @@ def _generate_email_sync(session: Session, lead_id: int):
     if client.html_footer:
         complete_body += f"<br>{client.html_footer}"
 
-    # 8c. Obowiązkowa klauzula RODO (opt-out = odpowiedź "Wypisz", brak linka)
+    # 8c. Obowiązkowa klauzula RODO (opt-out przez odpowiedź "Wypisz")
     # ADO = nazwa prawna z KRS (legal_name), NIE nazwa projektu/marki (client.name)
     rodo_admin_name = getattr(client, "legal_name", None) or client.name
     rodo_clause = generate_rodo_clause(
@@ -428,7 +428,11 @@ def _call_writer(
     """
     uvp = client.value_proposition or ""
     cases = client.case_studies or ""
-    constraints = client.negative_constraints or ""
+    tone_of_voice = (getattr(client, "tone_of_voice", None) or "").strip()
+    # negative_constraints zawiera MIESZANE zakazy (dla scoutingu I dla pisania).
+    # Writer stosuje TYLKO te dotyczące treści, stylu i tematyki maila.
+    # Zakazy dotyczące typów firm (np. "nie szukaj szpitali") są tu nieistotne.
+    writing_constraints = client.negative_constraints or ""
 
     icebreaker = research_data.get("icebreaker") or ""
     company_summary = research_data.get("summary") or ""
@@ -469,6 +473,15 @@ def _call_writer(
         )
 
     # --- DANE O FIRMACH (kontekst) ---
+    tone_block = f"\nTON GŁOSU I STYL: {tone_of_voice}" if tone_of_voice else ""
+
+    writing_constraints_block = ""
+    if writing_constraints.strip():
+        writing_constraints_block = (
+            f"\nOGRANICZENIA TREŚCI I STYLU (stosuj je do pisania — ignoruj zakazy dotyczące typów firm):\n"
+            f"{writing_constraints}"
+        )
+
     data_block = f"""ODBIORCA (firma do której piszemy):
 - Nazwa: {company_name}
 - Profil: {company_summary or "brak danych"}
@@ -478,8 +491,7 @@ def _call_writer(
 NADAWCA (w czyim imieniu piszemy):
 - Firma: {client_name}
 - Co oferujemy: {uvp or "brak danych"}
-- Case studies: {cases or "brak"}
-- Ograniczenia (czego nie pisać): {constraints or "brak"}"""
+- Case studies: {cases or "brak"}{tone_block}{writing_constraints_block}"""
 
     # --- TASK: CO PISAĆ ---
     # Dynamiczna forma gramatyczna (rodzaj żeński/męski)
@@ -565,8 +577,12 @@ WAŻNE: Piszesz w RODZAJU ŻEŃSKIM. Zawsze: "widziałam", "zauważyłam", "zast
 
 WAŻNE: Piszesz w RODZAJU MĘSKIM. Zawsze: "widziałem", "zauważyłem", "zastanawiałem się", "pracowałem", "rozmawiałem"."""
 
-    system_prompt = f"""{persona}
+    tone_of_voice_rule = ""
+    if tone_of_voice:
+        tone_of_voice_rule = f"\n=== TON GŁOSU (PRIORYTET NADRZĘDNY) ===\nKlient zdefiniował wymagany styl komunikacji: {tone_of_voice}\nKażde zdanie maila MUSI odzwierciedlać ten ton. To wymóg niepodlegający negocjacji.\n"
 
+    system_prompt = f"""{persona}
+{tone_of_voice_rule}
 Twoje zasady życiowe jako handlowca:
 - Piszesz krótko. Nikt nie czyta esejów od nieznajomych.
 - Każde zdanie musi nieść informację. Jeśli zdanie można usunąć bez straty sensu — usuń je.

@@ -22,6 +22,7 @@ from app.schemas import StrategyOutput
 from app.rodo_manager import is_domain_opted_out
 from app.model_factory import create_llm, DEFAULT_MODEL
 from app import stats_manager
+from app import critical_monitor
 
 # --- KONFIGURACJA ENTERPRISE ---
 load_dotenv()
@@ -131,41 +132,49 @@ async def _ai_filter_batch(raw_items: List[Dict], client_data: Dict) -> List[str
     mode = client_data["mode"]
     constraints = client_data["negative_constraints"]
 
-    system_prompt = f"""Jesteś filtrem jakości leadów B2B. Twoja robota: przepuścić firmy, które ROZSĄDNIE pasują do profilu klienta. Nie szukamy perfekcji — szukamy firm, z którymi WARTO spróbować nawiązać kontakt.
+    # Budujemy sekcję twardych zakazów jeśli są zdefiniowane
+    hard_block_section = ""
+    if constraints and constraints.strip():
+        hard_block_section = f"""
+=== !! TWARDE ZAKAZY — BEZWZGLĘDNE !! ===
+Pole poniżej może zawierać dwa typy ograniczeń: dotyczące TYPÓW FIRM (np. "nie szpitale", "nie korporacje") oraz dotyczące treści maili (np. "nie wspominaj o WordPress").
+Tutaj stosujesz TYLKO zakazy dotyczące TYPÓW FIRM, branż, rozmiaru i lokalizacji.
+Zakazy dotyczące treści maili → ignoruj (nie są Twoją odpowiedzialnością).
 
-FILOZOFIA: W razie wątpliwości — PRZEPUŚĆ. Lepiej mieć lead do zweryfikowania przez Researchera niż stracić potencjalnego klienta. Odrzucaj TYLKO oczywiste pomyłki.
+Zakazy firm/branż do zastosowania:
+{constraints}
 
+Jeśli masz wątpliwości czy firma pasuje do zakazu — ODRZUĆ.
+"""
+
+    system_prompt = f"""Jesteś filtrem jakości leadów B2B. Twoja robota: przepuścić firmy pasujące do profilu klienta i bezwzględnie blokować te niezgodne z zakazami.
+{hard_block_section}
 === PROFIL KLIENTA ===
 Branża klienta: {industry}
 Kogo szuka (ICP): {icp}
 Tryb: {mode} (SALES = szuka klientów do sprzedaży, JOB_HUNT = szuka pracodawców)
-Czego NIE chce: {constraints or "brak ograniczeń"}
 
-=== TWÓJ PROCES DECYZYJNY (dla każdego kandydata) ===
-1. Czy KATEGORIA choć CZĘŚCIOWO pasuje do ICP? Nie wymagaj idealnego dopasowania — jeśli firma działa w pokrewnej branży, PRZEPUŚĆ.
-2. Czy SKALA jest akceptowalna? Odrzucaj TYLKO ewidentne korporacje (wielkie sieci, holdingi). Małe i średnie firmy — zawsze przepuszczaj.
-3. Czy to B2B? Jeśli ICP NIE mówi o B2C — odrzuć czyste B2C (restauracje, fryzjerzy). ALE: jeśli firma ma stronę WWW i wygląda na biznes z potencjałem — daj szansę.
-4. Czy to ewidentna konkurencja klienta? (DOKŁADNIE ta sama usługa = ODRZUĆ w trybie SALES. Pokrewna branża to NIE to samo co konkurencja.)
-5. Instytucja publiczna? Odrzuć tylko jeśli ICP wyraźnie tego nie obejmuje.
+=== PRIORYTET DECYZYJNY ===
+1. NAJPIERW sprawdź TWARDE ZAKAZY (sekcja powyżej). Jeśli firma pasuje do zakazu → ODRZUĆ. Koniec analizy dla tej firmy.
+2. Czy KATEGORIA pasuje do ICP? Nie wymagaj perfekcji — pokrewna branża wystarczy.
+3. Czy SKALA jest akceptowalna? Odrzucaj ewidentne korporacje i holdingi z wieloma oddziałami. Instytucje publiczne (urzędy, NFZ, ZUS) — zawsze odrzuć, chyba że ICP tego wymaga.
+4. Czy to ewidentna konkurencja klienta? (DOKŁADNIE ta sama usługa = ODRZUĆ w trybie SALES).
 
-=== KIEDY ODRZUCIĆ (twarde reguły — TYLKO te) ===
-- Domena to znany portal/agregator (katalog firm, porównywarka, marketplace)
-- Firma to ewidentna wielka korporacja: "Holding", "S.A." z wieloma oddziałami, globalne sieci
-- Liczba recenzji > 2000 na Google Maps → prawdopodobnie duża sieć (ale 100-2000 to MOŻE być popularny lokalny biznes, PRZEPUŚĆ)
-- Oczywisty mismatch z ICP (np. ICP mówi "firmy IT" a to jest "Piekarnia")
+=== KIEDY ODRZUCIĆ ===
+- Pasuje do TWARDYCH ZAKAZÓW — zawsze, bez wyjątków
+- Domena to znany portal/agregator/marketplace
+- Ewidentna wielka korporacja lub instytucja publiczna (NFZ, ZUS, urząd, szpital publiczny)
+- Oczywisty mismatch z ICP
 
-=== KIEDY PRZEPUŚCIĆ (bądź hojny) ===
-- Nazwa brzmi jak firma, studio, agencja, gabinet, kancelaria, biuro, pracownia, warsztat
-- Kategoria jest choć trochę powiązana z ICP
-- Firma ma własną stronę WWW (to już sygnał profesjonalizmu)
-- Małe i średnie firmy (nawet bez recenzji) — to IDEALNI kandydaci
-- Nowe firmy z małą liczbą recenzji (0-50) — często najlepsi klienci, szukają usług
-- W razie wątpliwości czy pasuje — PRZEPUŚĆ, niech Researcher zweryfikuje
+=== KIEDY PRZEPUŚCIĆ ===
+- Firma nie pasuje do żadnego zakazu i jest w obszarze ICP
+- Małe i średnie firmy prywatne — priorytet
+- Firma ma własną stronę WWW i wygląda profesjonalnie
 
 === KANDYDACI ===
 {candidates_str}
 
-Dla każdego kandydata: zdecyduj TAK/NIE. Przepuść wszystkie rozsądne dopasowania."""
+Dla każdego kandydata: NAJPIERW sprawdź zakazy, potem ICP. Zatwierdź tylko firmy spełniające oba warunki."""
 
     scout_model = client_data.get("scout_model", DEFAULT_MODEL)
     gatekeeper_llm = create_llm(scout_model, temperature=0.0)
@@ -283,10 +292,10 @@ def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Di
             new_companies_to_add.append(new_company)
             existing_domains_map[d] = new_company 
     
-    # Zapis nowych firm
+    # Zapis nowych firm (flush = nadaje ID bez commitu, zostanie w jednej transakcji z leadami)
     if new_companies_to_add:
         session.add_all(new_companies_to_add)
-        session.commit()
+        session.flush()  # ID przydzielone, ale transakcja otwarta
         for c in new_companies_to_add:
             existing_domains_map[c.domain] = c
 
@@ -376,6 +385,8 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
 
         history_id = await asyncio.to_thread(_db_create_history_entry, session, client_id, query)
 
+        APIFY_TIMEOUT = 120  # max 2 minuty na jeden query — anti-hang
+
         items = []
         try:
             if not use_google_search:
@@ -386,16 +397,22 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
                     "skipClosedPlaces": True,
                     "onlyWebsites": True,
                 }
-                run = await client.actor(ACTOR_MAPS).call(run_input=run_input)
+                run = await asyncio.wait_for(
+                    client.actor(ACTOR_MAPS).call(run_input=run_input),
+                    timeout=APIFY_TIMEOUT,
+                )
             else:
                 clean_query = query + " -site:linkedin.com -site:facebook.com -site:youtube.com"
                 run_input = {
-                    "queries": clean_query, 
+                    "queries": clean_query,
                     "resultsPerPage": BATCH_SIZE,
                     "countryCode": "pl",
                     "languageCode": "pl",
                 }
-                run = await client.actor(ACTOR_SEARCH).call(run_input=run_input)
+                run = await asyncio.wait_for(
+                    client.actor(ACTOR_SEARCH).call(run_input=run_input),
+                    timeout=APIFY_TIMEOUT,
+                )
 
             if run:
                 dataset = client.dataset(run["defaultDatasetId"])
@@ -444,9 +461,31 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
             print(f"      💾 Zapisano {added_in_batch} unikalnych leadów (z {len(approved_domains)} zaakceptowanych).")
             total_added += added_in_batch
 
+        except asyncio.TimeoutError:
+            print(f"      ⏱️ [SCOUT] Timeout ({APIFY_TIMEOUT}s) — Apify nie odpowiedział dla '{query}'. Pomijam.")
+            logger.warning(f"[SCOUT] Apify timeout dla query: '{query}'")
+            critical_monitor.record_failure("apify")
         except Exception as e:
+            err_str = str(e).lower()
             print(f"      ❌ Błąd w Async Scout: {e}")
-            # await asyncio.sleep(1) # Opcjonalne
+            logger.error(f"[SCOUT] Błąd: {e}")
+            if "unauthorized" in err_str or "invalid token" in err_str or "401" in err_str:
+                # Nieprawidłowy klucz API → natychmiastowy stop
+                critical_monitor.trigger_stop(
+                    api_name="apify",
+                    reason=f"Apify API zwróciło błąd autoryzacji — sprawdź APIFY_API_KEY w .env.",
+                    consecutive=1,
+                )
+            elif "payment" in err_str or "402" in err_str or "insufficient" in err_str:
+                critical_monitor.trigger_stop(
+                    api_name="apify",
+                    reason="Apify API zwróciło błąd płatności (HTTP 402) — wyczerpane środki.",
+                    consecutive=1,
+                )
+            else:
+                critical_monitor.record_failure("apify")
+        else:
+            critical_monitor.record_success("apify")
 
     print(f"🏁 [SCOUT] Koniec tury. Wynik: {total_added}/{SAFETY_LIMIT_LEADS}")
     return total_added
