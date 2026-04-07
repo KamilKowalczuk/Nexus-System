@@ -1,0 +1,26 @@
+---
+interface Props {
+  class?: string;
+  variant?: 'default' | 'accent' | 'gradient';
+}
+
+const { class: className = '', variant = 'default' } = Astro.props;
+
+let baseClass = 'rounded-2xl p-10 relative overflow-hidden group transition-all duration-700';
+
+if (variant === 'default') {
+  baseClass += ' glass-panel';
+} else if (variant === 'accent') {
+  baseClass += ' glass-panel-accent';
+} else if (variant === 'gradient') {
+  baseClass += ' gradient-border-card';
+}
+---
+
+<div class={`${baseClass} ${className}`}>
+  <!-- Cyjanowy hover glow na krawędzi bloku, który porusza się za kursorem (prosta CSS animacja glow u góry) -->
+  <div class="absolute -top-[100px] left-1/2 -translate-x-1/2 w-[200px] h-[100px] bg-titan-cyan/30 blur-[60px] opacity-0 group-hover:opacity-100 transition-opacity duration-1000 pointer-events-none rounded-full"></div>
+  <div class="relative z-10">
+    <slot />
+  </div>
+</div>

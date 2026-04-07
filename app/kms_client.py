@@ -87,6 +87,54 @@ def _build_kms_client():
     return kms.KeyManagementServiceClient(credentials=credentials)
 
 
+def encrypt_credential(plain_value: str) -> str:
+    """
+    Szyfruje plain-text credentiale przez GCP KMS.
+
+    BEZPIECZEŃSTWO:
+    - Jeśli wartość jest już szyfrogramem (ma prefiks ENCRYPTED:), zwraca bez zmian.
+    - Jeśli KMS jest niedostępny (brak konfiguracji), zwraca plain-text i loguje ostrzeżenie.
+    - Wynik jest zawsze w formacie 'ENCRYPTED:<base64>' gdy KMS dostępny.
+
+    Args:
+        plain_value: Hasło lub inny sekret w plain-text.
+
+    Returns:
+        Szyfrogram 'ENCRYPTED:<base64>' lub plain-text jeśli KMS niedostępny.
+    """
+    if not plain_value:
+        return plain_value
+
+    if is_encrypted(plain_value):
+        return plain_value  # Już zaszyfrowane — nie szyfruj ponownie
+
+    if not is_kms_available():
+        logger.warning(
+            "[KMS] Brak konfiguracji GCP KMS — hasło zapisane jako plain-text. "
+            "Skonfiguruj GCP_PROJECT_ID, GCP_KMS_KEY_RING, GCP_KMS_CRYPTO_KEY, "
+            "GCP_CLIENT_EMAIL, GCP_PRIVATE_KEY."
+        )
+        return plain_value
+
+    try:
+        kms_client = _build_kms_client()
+        key_name = _get_key_name()
+
+        response = kms_client.encrypt(
+            request={
+                "name": key_name,
+                "plaintext": plain_value.encode("utf-8"),
+            }
+        )
+
+        ciphertext_b64 = base64.b64encode(response.ciphertext).decode("utf-8")
+        return f"{_ENCRYPTED_PREFIX}{ciphertext_b64}"
+
+    except Exception as e:
+        logger.error("[KMS] Błąd szyfrowania credentiali: %s", type(e).__name__)
+        raise RuntimeError(f"[KMS] Szyfrowanie nie powiodło się: {e}") from e
+
+
 def decrypt_credential(encrypted_value: str) -> str:
     """
     Deszyfruje wartość zaszyfrowaną przez GCP KMS.
@@ -128,6 +176,12 @@ def decrypt_credential(encrypted_value: str) -> str:
         # Konwersja bytes → str, trim whitespace który KMS czasem dodaje
         plaintext: str = response.plaintext.decode("utf-8").strip()
         return plaintext
+
+    except (ImportError, ModuleNotFoundError):
+        raise RuntimeError(
+            "[KMS] Biblioteka google-cloud-kms nie jest zainstalowana. "
+            "Zainstaluj: uv pip install google-cloud-kms"
+        )
 
     except Exception as e:
         logger.error("[KMS] Błąd deszyfrowania credentiali: %s", type(e).__name__)

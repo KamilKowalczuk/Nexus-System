@@ -1,0 +1,43 @@
+---
+export const prerender = false;
+
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import CtaSection from '../components/CtaSection.astro';
+import PaymentErrorCard from '../components/PaymentErrorCard.svelte';
+
+let payloadData = null;
+try {
+  const PAYLOAD_URL = import.meta.env.PAYLOAD_URL || 'http://127.0.0.1:3000';
+  const res = await fetch(`${PAYLOAD_URL}/api/globals/landing-page?depth=1`);
+  if (res.ok) {
+    payloadData = await res.json();
+  }
+} catch (err) {
+  // Payload niedostępny – header wyrenderuje się z domyślnymi wartościami
+}
+---
+
+<Layout
+  meta={{
+    title: 'Błąd płatności – NEXUS Agent',
+    description:
+      'Płatność nie została zrealizowana. Żadna kwota nie została pobrana – możesz bezpiecznie spróbować ponownie.',
+  }}
+>
+  <Header data={payloadData?.header} slots={payloadData?.slots} />
+
+  <main class="min-h-screen flex flex-col items-center justify-center px-4 md:px-8 py-24 md:py-32 text-center relative overflow-hidden">
+
+    <!-- Ambient glows (red) -->
+    <div class="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-red-500/5 blur-[180px] rounded-full pointer-events-none"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-red-900/5 blur-[150px] rounded-full pointer-events-none"></div>
+
+    <PaymentErrorCard client:only="svelte" />
+
+  </main>
+
+  <CtaSection data={payloadData?.cta} />
+  <Footer data={payloadData?.footer} />
+</Layout>

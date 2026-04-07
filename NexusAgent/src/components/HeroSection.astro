@@ -1,0 +1,190 @@
+---
+interface Props {
+  data?: {
+    badge?: string;
+    headlineFirstLine?: string;
+    headlineGlitch?: string;
+    subtitle?: string;
+    ctaText?: string;
+    ctaUrl?: string;
+    secondaryText?: string;
+  };
+}
+
+const { data } = Astro.props;
+
+const badge = data?.badge || "NEXUS REVENUE PROTOCOL ONLINE";
+const headlineFirstLine =
+  data?.headlineFirstLine || "Przestań karmić CRM pustymi leadami.";
+const headlineGlitch =
+  data?.headlineGlitch || "Zacznij liczyć zamknięte kontrakty.";
+const subtitle =
+  data?.subtitle ||
+  "NEXUS przejmuje zimny outbound w Software House’ach. Bez rekrutacji, bez szkoleń, bez wymówek handlowców. Każdy dzień bez systemu to kolejne maile, które czyta Twoja konkurencja – nie Ty.";
+const ctaText = data?.ctaText || "Uruchom sekwencję ataku";
+const ctaUrl = data?.ctaUrl || "#demo";
+const secondaryText = data?.secondaryText || "Zobacz architekturę systemu";
+---
+
+<section
+  class="flex flex-col items-center justify-center px-4 md:px-8 pb-16 md:pb-24 pt-4 text-center max-w-7xl mx-auto relative h-[calc(100dvh-5rem)] md:h-[calc(100dvh-7rem)] min-h-[550px] w-full"
+>
+  <!-- Ambient floating orbs – no clipping, bleed freely -->
+  <div
+    class="absolute top-[20%] left-[5%] w-[400px] h-[400px] bg-primary/10 blur-[150px] rounded-full pointer-events-none float-slow"
+  >
+  </div>
+  <div
+    class="absolute bottom-[10%] right-[5%] w-[500px] h-[500px] bg-accent/10 blur-[180px] rounded-full pointer-events-none float-slow-reverse"
+  >
+  </div>
+
+  <div
+    class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/20 bg-primary/5 mb-5 md:mb-8"
+  >
+    <span class="material-symbols-outlined text-primary text-sm"
+      >verified_user</span
+    >
+    <span
+      class="text-[10px] font-mono uppercase tracking-[0.2em] text-primary text-xs"
+      >{badge}</span
+    >
+  </div>
+
+  <h1
+    class="font-display text-[clamp(2.25rem,min(7.5vw,10dvh),7rem)] font-bold leading-[0.9] tracking-tight mb-6 md:mb-8 hero-fade-up text-balance w-full"
+  >
+    {headlineFirstLine}<br />
+    <span class="text-primary italic hero-glitch" data-text={headlineGlitch}
+      >{headlineGlitch}</span
+    >
+  </h1>
+
+  <p
+    class="text-[clamp(1rem,min(2.5vw,4dvh),1.5rem)] text-slate-400 max-w-3xl mx-auto font-light mb-10 md:mb-12 leading-relaxed hero-fade-up text-balance w-full px-4"
+    style="animation-delay: 0.1s;"
+  >
+    {subtitle}
+  </p>
+
+  <div
+    class="flex flex-col sm:flex-row gap-4 sm:gap-6 hero-fade-up items-center justify-center w-full max-w-sm sm:max-w-none mx-auto"
+    style="animation-delay: 0.2s;"
+  >
+    <a
+      href={ctaUrl}
+      class="bg-primary text-bg-dark font-display font-bold text-xs sm:text-sm uppercase px-8 py-4 sm:px-12 sm:py-5 rounded-full hover:scale-105 transition-all duration-300 neon-shadow-cyan w-full sm:w-auto"
+    >
+      {ctaText}
+    </a>
+    <a
+      href="#engine"
+      class="bg-transparent border border-slate-700 text-slate-300 font-display font-bold text-xs sm:text-sm uppercase px-8 py-4 sm:px-12 sm:py-5 rounded-full hover:bg-slate-800/80 hover:border-slate-600 transition-all duration-300 w-full sm:w-auto"
+    >
+      {secondaryText}
+    </a>
+  </div>
+
+  <!-- Scroll indicator -->
+  <div
+    class="absolute bottom-8 md:bottom-10 left-1/2 -translate-x-1/2 animate-bounce opacity-50"
+  >
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      class="text-primary"
+    >
+      <path d="M12 5v14M19 12l-7 7-7-7"></path>
+    </svg>
+  </div>
+</section>
+
+<style>
+  /* Auto-glitch on hero text: triggers 2s after load, repeats every 5s */
+  .hero-glitch {
+    position: relative;
+  }
+  .hero-glitch::before,
+  .hero-glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+  .hero-glitch::before {
+    color: #0ceaed;
+    z-index: -1;
+    animation: hero-glitch-cyan 5s ease-in-out 2s infinite;
+  }
+  .hero-glitch::after {
+    color: #9c27b0;
+    z-index: -2;
+    animation: hero-glitch-purple 5s ease-in-out 2s infinite;
+  }
+
+  @keyframes hero-glitch-cyan {
+    0%,
+    86%,
+    100% {
+      opacity: 0;
+      transform: translate(0);
+      clip-path: inset(0 0 100% 0);
+    }
+    88% {
+      opacity: 0.8;
+      transform: translate(3px, -2px);
+      clip-path: inset(15% 0 60% 0);
+    }
+    90% {
+      opacity: 0.8;
+      transform: translate(-2px, 1px);
+      clip-path: inset(55% 0 15% 0);
+    }
+    92% {
+      opacity: 0.6;
+      transform: translate(1px, 2px);
+      clip-path: inset(30% 0 40% 0);
+    }
+    94% {
+      opacity: 0;
+      transform: translate(0);
+      clip-path: inset(0 0 100% 0);
+    }
+  }
+  @keyframes hero-glitch-purple {
+    0%,
+    87%,
+    100% {
+      opacity: 0;
+      transform: translate(0);
+      clip-path: inset(0 0 100% 0);
+    }
+    89% {
+      opacity: 0.8;
+      transform: translate(-3px, 2px);
+      clip-path: inset(40% 0 30% 0);
+    }
+    91% {
+      opacity: 0.8;
+      transform: translate(2px, -1px);
+      clip-path: inset(10% 0 70% 0);
+    }
+    93% {
+      opacity: 0.6;
+      transform: translate(-1px, -2px);
+      clip-path: inset(65% 0 5% 0);
+    }
+    95% {
+      opacity: 0;
+      transform: translate(0);
+      clip-path: inset(0 0 100% 0);
+    }
+  }
+</style>

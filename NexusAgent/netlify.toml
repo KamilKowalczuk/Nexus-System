@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[edge_functions]]
+  function = "security-headers"
+  path = "/*"
+  # Omijamy pliki statyczne, żeby Edge Function nie odpalało się niepotrzebnie dla obrazków i nie pożerało limitów
+  excludedPattern = "(/api/.*|/_astro/.*|\\.js$|\\.css$|\\.woff2$|\\.avif$|\\.webp$|\\.png$|\\.jpg$|\\.svg$)"

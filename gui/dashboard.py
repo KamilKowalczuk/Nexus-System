@@ -50,6 +50,8 @@ try:
     MODEL_FACTORY_OK = True
 except ImportError:
     MODEL_FACTORY_OK = False
+
+from app.kms_client import encrypt_credential, is_encrypted, is_kms_available
 # ------------------------
 
 # --- KONFIGURACJA UI ---
@@ -60,53 +62,318 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CUSTOM CSS ---
+# --- CUSTOM CSS (NEXUS Design System) ---
 st.markdown("""
 <style>
-    .block-container {padding-top: 1rem; padding-bottom: 2rem;}
-    h1 {font-size: 2.2rem; font-weight: 800; color: #111827;}
-    h2 {font-size: 1.6rem; font-weight: 700; color: #374151;}
-    h3 {font-size: 1.3rem; font-weight: 600; color: #4B5563;}
-    
-    /* Boxy statusu silnika */
+    /* === GOOGLE FONTS === */
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    /* === BASE === */
+    [data-testid="stApp"] {
+        background-color: #0B0C10 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+    }
+
+    /* === TYPOGRAFIA === */
+    h1, h2, h3, h4, h5, h6,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3 {
+        font-family: 'Space Grotesk', sans-serif !important;
+        color: #e2e8f0 !important;
+        letter-spacing: -0.01em !important;
+        font-weight: 700 !important;
+    }
+    h1 { font-size: 1.9rem !important; }
+    h2 { font-size: 1.4rem !important; }
+    h3, h4 { font-size: 1.1rem !important; font-weight: 600 !important; }
+
+    /* === SIDEBAR === */
+    [data-testid="stSidebar"] {
+        background: #0a0b0f !important;
+        border-right: 1px solid rgba(255,255,255,0.05) !important;
+    }
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] .stMarkdown h3 {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.65rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.14em !important;
+        text-transform: uppercase !important;
+        color: #475569 !important;
+    }
+    [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.05) !important; }
+
+    /* === METRIC CARDS === */
+    [data-testid="metric-container"] {
+        background: rgba(255,255,255,0.03) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 14px !important;
+        padding: 18px !important;
+        box-shadow: none !important;
+        transition: border-color 0.3s, box-shadow 0.3s !important;
+    }
+    [data-testid="metric-container"]:hover {
+        border-color: rgba(12,234,237,0.22) !important;
+        box-shadow: 0 0 18px rgba(12,234,237,0.07) !important;
+    }
+    [data-testid="stMetricLabel"] p {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 10px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.1em !important;
+        color: #64748b !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-size: 1.9rem !important;
+        font-weight: 700 !important;
+        color: #e2e8f0 !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 11px !important;
+    }
+
+    /* === BUTTONS === */
+    .stButton > button {
+        background: rgba(255,255,255,0.04) !important;
+        color: #cbd5e1 !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: 10px !important;
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important;
+        font-size: 13px !important;
+        letter-spacing: 0.02em !important;
+        transition: all 0.2s ease !important;
+        padding: 0.5rem 1.25rem !important;
+    }
+    .stButton > button:hover {
+        background: rgba(12,234,237,0.07) !important;
+        border-color: rgba(12,234,237,0.3) !important;
+        color: #0ceaed !important;
+        box-shadow: 0 0 14px rgba(12,234,237,0.12) !important;
+        transform: translateY(-1px) !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: #0ceaed !important;
+        color: #0B0C10 !important;
+        border-color: #0ceaed !important;
+        font-weight: 700 !important;
+        box-shadow: 0 0 20px rgba(12,234,237,0.28) !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: #0ceaed !important;
+        color: #0B0C10 !important;
+        box-shadow: 0 0 30px rgba(12,234,237,0.45) !important;
+        filter: brightness(1.08) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* === TABS === */
+    [data-testid="stTabs"] [data-baseweb="tab-list"] {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(255,255,255,0.07) !important;
+        gap: 0 !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"] {
+        background: transparent !important;
+        color: #64748b !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 10.5px !important;
+        font-weight: 500 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.09em !important;
+        border-bottom: 2px solid transparent !important;
+        padding: 0.7rem 1.2rem !important;
+        transition: all 0.2s !important;
+    }
+    [data-testid="stTabs"] [aria-selected="true"] {
+        color: #0ceaed !important;
+        border-bottom-color: #0ceaed !important;
+        background: transparent !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]:hover {
+        color: #94a3b8 !important;
+    }
+
+    /* === INPUTS === */
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stNumberInput"] input {
+        background: rgba(255,255,255,0.04) !important;
+        border: 1px solid rgba(255,255,255,0.09) !important;
+        border-radius: 10px !important;
+        color: #e2e8f0 !important;
+        font-family: 'Inter', sans-serif !important;
+        font-size: 14px !important;
+        transition: border-color 0.2s !important;
+    }
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stTextArea"] textarea:focus {
+        border-color: rgba(12,234,237,0.4) !important;
+        box-shadow: 0 0 12px rgba(12,234,237,0.07) !important;
+    }
+    [data-testid="stTextInput"] label,
+    [data-testid="stTextArea"] label,
+    [data-testid="stNumberInput"] label,
+    .stSelectbox label, .stRadio label > span,
+    .stCheckbox label > span {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 10.5px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.09em !important;
+        color: #64748b !important;
+        font-weight: 500 !important;
+    }
+
+    /* === SELECTBOX === */
+    [data-baseweb="select"] > div {
+        background: rgba(255,255,255,0.04) !important;
+        border: 1px solid rgba(255,255,255,0.09) !important;
+        border-radius: 10px !important;
+        color: #e2e8f0 !important;
+    }
+    [data-baseweb="popover"] [data-baseweb="menu"] {
+        background: #111318 !important;
+        border: 1px solid rgba(255,255,255,0.09) !important;
+        border-radius: 10px !important;
+    }
+    [data-baseweb="option"] { color: #e2e8f0 !important; background: transparent !important; }
+    [data-baseweb="option"]:hover,
+    [data-baseweb="option"][aria-selected="true"] {
+        background: rgba(12,234,237,0.08) !important;
+        color: #0ceaed !important;
+    }
+
+    /* === EXPANDER === */
+    [data-testid="stExpander"] {
+        background: rgba(255,255,255,0.02) !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 12px !important;
+    }
+    [data-testid="stExpander"] summary {
+        color: #94a3b8 !important;
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stExpander"] summary:hover { color: #e2e8f0 !important; }
+
+    /* === FORM === */
+    [data-testid="stForm"] {
+        background: rgba(255,255,255,0.02) !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 14px !important;
+        padding: 1.5rem !important;
+    }
+
+    /* === DATAFRAME === */
+    [data-testid="stDataFrame"] {
+        border: 1px solid rgba(255,255,255,0.07) !important;
+        border-radius: 12px !important;
+        overflow: hidden !important;
+    }
+
+    /* === DIVIDER === */
+    hr { border-color: rgba(255,255,255,0.06) !important; }
+
+    /* === CAPTIONS === */
+    [data-testid="stCaptionContainer"] p {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 11px !important;
+        color: #475569 !important;
+    }
+
+    /* === CODE === */
+    code {
+        background: rgba(12,234,237,0.08) !important;
+        color: #0ceaed !important;
+        border-radius: 5px !important;
+        padding: 2px 6px !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 12px !important;
+    }
+    [data-testid="stCode"] {
+        background: rgba(255,255,255,0.03) !important;
+        border: 1px solid rgba(255,255,255,0.07) !important;
+        border-radius: 10px !important;
+    }
+
+    /* === PROGRESS BAR === */
+    [data-testid="stProgressBar"] > div > div {
+        background: linear-gradient(90deg, #0ceaed, #9c27b0) !important;
+        border-radius: 9999px !important;
+    }
+    [data-testid="stProgressBar"] > div {
+        background: rgba(255,255,255,0.05) !important;
+        border-radius: 9999px !important;
+    }
+
+    /* === ENGINE STATUS BOXES (custom HTML) === */
     .engine-status-box {
-        padding: 10px;
-        border-radius: 8px;
+        padding: 11px 16px;
+        border-radius: 10px;
         text-align: center;
-        font-weight: bold;
-        margin-bottom: 10px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 12px;
         border: 1px solid;
     }
-    .status-online { background-color: #dcfce7; color: #166534; border-color: #22c55e; }
-    .status-offline { background-color: #fee2e2; color: #991b1b; border-color: #ef4444; }
+    .status-online {
+        background: rgba(34,197,94,0.08);
+        color: #86efac;
+        border-color: rgba(34,197,94,0.22);
+        box-shadow: 0 0 14px rgba(34,197,94,0.09);
+    }
+    .status-offline {
+        background: rgba(239,68,68,0.08);
+        color: #fca5a5;
+        border-color: rgba(239,68,68,0.22);
+        box-shadow: 0 0 14px rgba(239,68,68,0.09);
+    }
 
-    /* Animacja kropki LIVE */
-    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    /* === LIVE DOT === */
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
     .live-dot { color: #ef4444; animation: blink 1.5s infinite; font-weight: bold; }
-    
-    [data-testid="metric-container"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        padding: 16px !important;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    }
-    .stButton button { border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem; }
 
-    /* STYL KONSOLI LOGÓW */
+    /* === CONSOLE LOGS === */
     .console-logs {
-        background-color: #1e1e1e;
-        color: #d4d4d4;
-        font-family: 'Consolas', 'Courier New', monospace;
-        font-size: 13px;
-        line-height: 1.4;
-        padding: 15px;
-        border-radius: 8px;
-        height: 400px; /* Stała wysokość */
-        overflow-y: scroll; /* Suwak */
-        white-space: pre-wrap; /* Zawijanie wierszy */
-        border: 1px solid #333;
+        background: rgba(255,255,255,0.02);
+        color: #94a3b8;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        line-height: 1.65;
+        padding: 16px;
+        border-radius: 12px;
+        height: 400px;
+        overflow-y: scroll;
+        white-space: pre-wrap;
+        border: 1px solid rgba(255,255,255,0.06);
     }
+    .console-logs::-webkit-scrollbar { width: 5px; }
+    .console-logs::-webkit-scrollbar-track { background: transparent; }
+    .console-logs::-webkit-scrollbar-thumb {
+        background: rgba(12,234,237,0.18);
+        border-radius: 9999px;
+    }
+    .console-logs::-webkit-scrollbar-thumb:hover { background: rgba(12,234,237,0.35); }
+
+    /* === GLOBAL SCROLLBAR === */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.07);
+        border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(12,234,237,0.25); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,13 +490,13 @@ try:
 
         if engine_status:
             st.markdown('<div class="engine-status-box status-online">🟢 ONLINE</div>', unsafe_allow_html=True)
-            if st.button("ZATRZYMAJ", use_container_width=True):
+            if st.button("ZATRZYMAJ", width='stretch'):
                 stop_engine()
                 time.sleep(1)
                 st.rerun()
         else:
             st.markdown('<div class="engine-status-box status-offline">🔴 OFFLINE</div>', unsafe_allow_html=True)
-            if st.button("URUCHOM", use_container_width=True):
+            if st.button("URUCHOM", width='stretch'):
                 start_engine()
                 time.sleep(1)
                 st.rerun()
@@ -238,7 +505,7 @@ try:
 
         # --- SYNC Z PAYLOAD (ręczny trigger) ---
         st.markdown("### 🔄 Synchronizacja")
-        if st.button("Wymuś Sync Briefów", use_container_width=True, help="Ręcznie pobiera zmiany z nexusagent.pl"):
+        if st.button("Wymuś Sync Briefów", width='stretch', help="Ręcznie pobiera zmiany z nexusagent.pl"):
             try:
                 result = sync_briefs_to_clients(session)
                 c, u, d = result.get("created", 0), result.get("updated", 0), result.get("deactivated", 0)
@@ -326,13 +593,14 @@ try:
                 if not name:
                     st.error("Nazwa wymagana")
                 else:
+                    encrypted_pass = encrypt_credential(pass_input) if pass_input else ""
                     nc = Client(
                         name=name, industry=industry, sender_name=sender,
                         value_proposition=uvp, ideal_customer_profile=icp,
                         mode=mode_sel,
                         sending_mode="DRAFT",
                         smtp_server=smtp_host, smtp_port=smtp_port, smtp_user=smtp_user,
-                        smtp_password=pass_input, html_footer=html_foot, status="ACTIVE",
+                        smtp_password=encrypted_pass, html_footer=html_foot, status="ACTIVE",
                         privacy_policy_url=onb_privacy_url or None,
                     )
                     session.add(nc)
@@ -357,16 +625,19 @@ try:
 
         # 1. PLACEHOLDERY DLA DANYCH DYNAMICZNYCH
         metrics_placeholder = st.empty()
-        
+
         st.markdown("---")
         log_label = "📜 PODGLĄD ZDARZEŃ SILNIKA"
         if live_mode: log_label += " <span class='live-dot'>● REC</span>"
-        
+
         with st.expander(log_label, expanded=True):
             if not live_mode:
                 if st.button("🔄 Odśwież Logi", key="refresh_logs_main"):
                     st.rerun()
             logs_placeholder = st.empty()
+
+        # Placeholder w sidebarze — nadpisywany zamiast dokładać nowe elementy
+        sidebar_phase2_placeholder = st.sidebar.empty()
 
         # FUNKCJA AKTUALIZUJĄCA DANE
         def update_dashboard_data():
@@ -413,11 +684,11 @@ try:
                     redis_ok = redis_client.ping()
                     
                     if redis_ok:
-                        st.sidebar.success("⚡ Phase 2: ACTIVE")
+                        sidebar_phase2_placeholder.success("⚡ Phase 2: ACTIVE")
                     else:
-                        st.sidebar.error("⚠️ Redis: DISCONNECTED")
+                        sidebar_phase2_placeholder.error("⚠️ Redis: DISCONNECTED")
                 except:
-                    st.sidebar.warning("⚠️ Phase 2: DISABLED")
+                    sidebar_phase2_placeholder.warning("⚠️ Phase 2: DISABLED")
 
         # PANEL AKCJI RĘCZNYCH
         st.markdown("### 🛠️ Sterowanie Manualne")
@@ -580,7 +851,9 @@ try:
                     e_iport = st.number_input("IMAP Port", value=client.imap_port or 993)
                 with et3:
                     e_user = st.text_input("SMTP User", client.smtp_user)
-                    e_pass = st.text_input("Hasło Aplikacji", client.smtp_password, type="password")
+                    e_pass = st.text_input("Hasło Aplikacji", value=client.smtp_password or "", type="password")
+                    if client.smtp_password and not is_encrypted(client.smtp_password):
+                        st.caption("⚠️ Hasło niezaszyfrowane — zapisz ponownie")
                 
                 e_limit = st.number_input("Limit Dzienny (Docelowy)", value=client.daily_limit or 50)
                 curr_file = client.attachment_filename or "Brak pliku"
@@ -747,7 +1020,8 @@ try:
                     client.smtp_port = e_port
                     client.imap_port = e_iport
                     client.smtp_user = e_user
-                    client.smtp_password = e_pass
+                    if e_pass:
+                        client.smtp_password = encrypt_credential(e_pass)
                     client.daily_limit = e_limit
                     client.html_footer = e_footer
                     client.privacy_policy_url = e_privacy_url or None
@@ -798,7 +1072,7 @@ try:
                 with col_text:
                     st.code(c.strategy_prompt, language="text")
                 with col_btn:
-                    if st.button("🗑️ Usuń", key=f"del_camp_{c.id}", use_container_width=True):
+                    if st.button("🗑️ Usuń", key=f"del_camp_{c.id}", width='stretch'):
                         c.status = "ARCHIVED" # Soft delete
                         session.commit()
                         st.success("Usunięto.")
@@ -815,7 +1089,7 @@ try:
             with c_rep3:
                 st.write("") 
                 st.write("") 
-                gen_btn = st.button("🖨️ Wygeneruj PDF", type="primary", use_container_width=True)
+                gen_btn = st.button("🖨️ Wygeneruj PDF", type="primary", width='stretch')
 
             if gen_btn:
                 with st.spinner("Generowanie..."):
@@ -824,7 +1098,7 @@ try:
                         if pdf_path and os.path.exists(pdf_path):
                             st.success(f"Gotowe!")
                             with open(pdf_path, "rb") as pdf_file:
-                                st.download_button("📥 POBIERZ", pdf_file, file_name=os.path.basename(pdf_path), mime="application/pdf", use_container_width=True)
+                                st.download_button("📥 POBIERZ", pdf_file, file_name=os.path.basename(pdf_path), mime="application/pdf", width='stretch')
                     except Exception as e: st.error(f"Błąd: {e}")
 
         # --- TAB 4: DANE ---
@@ -833,7 +1107,7 @@ try:
             try:
                 q = session.query(Lead.id, GlobalCompany.name, Lead.status, Lead.target_email).join(GlobalCompany).join(Campaign).filter(Campaign.client_id == client.id)
                 df = pd.read_sql(q.statement, session.connection())
-                st.dataframe(df, use_container_width=True)            
+                st.dataframe(df, width='stretch')            
             except Exception as e: st.warning("Brak danych.")
 
         # --- TAB 5: PHASE 2 MONITORING ---
@@ -1080,7 +1354,7 @@ try:
                         
                         if worker_data:
                             df_workers = pd.DataFrame(worker_data)
-                            st.dataframe(df_workers, use_container_width=True, hide_index=True)
+                            st.dataframe(df_workers, width='stretch', hide_index=True)
                     
                 except Exception as e:
                     st.error(f"Queue stats error: {e}")
@@ -1095,12 +1369,12 @@ try:
                 col_m1, col_m2, col_m3 = st.columns(3)
                 
                 with col_m1:
-                    if st.button("🗑️ Clear Email Cache", use_container_width=True):
+                    if st.button("🗑️ Clear Email Cache", width='stretch'):
                         # This would need implementation in cache_manager
                         st.warning("⚠️ Feature coming soon")
                 
                 with col_m2:
-                    if st.button("🔄 Reset Rate Limits", use_container_width=True):
+                    if st.button("🔄 Reset Rate Limits", width='stretch'):
                         try:
                             rate_limiter.reset_client_limits(client.id)
                             st.success("✅ Limits reset")
@@ -1110,7 +1384,7 @@ try:
                             st.error(f"Error: {e}")
                 
                 with col_m3:
-                    if st.button("📊 Export Stats", use_container_width=True):
+                    if st.button("📊 Export Stats", width='stretch'):
                         try:
                             stats_export = {
                                 "timestamp": datetime.now().isoformat(),

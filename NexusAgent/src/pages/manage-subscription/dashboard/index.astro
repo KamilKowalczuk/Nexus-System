@@ -1,0 +1,57 @@
+---
+export const prerender = false;
+
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/Header.astro';
+import Footer from '../../../components/Footer.astro';
+import SubscriptionDashboard from '../../../components/SubscriptionDashboard.svelte';
+import { verifySession } from '../../../utils/session';
+
+// Wymagaj logowania:
+const sessionCookie = Astro.cookies.get('nexus_sub_session')?.value;
+const secret = import.meta.env.PAYLOAD_API_KEY;
+
+let orderId = null;
+if (secret) {
+  try {
+    orderId = verifySession(sessionCookie, secret);
+  } catch (e) {
+    console.error('Błąd sesji JWT / Brak klucza:', e);
+  }
+}
+
+if (!orderId) {
+  // Przekieruj z powrotem na ekran logowania do panelu
+  return Astro.redirect('/manage-subscription');
+}
+
+let payloadData = null;
+try {
+  const PAYLOAD_URL = import.meta.env.PAYLOAD_URL || 'http://127.0.0.1:3000';
+  const res = await fetch(`${PAYLOAD_URL}/api/globals/landing-page?depth=1`);
+  if (res.ok) payloadData = await res.json();
+} catch {
+  // fallback do domyślnych wartości headera
+}
+---
+
+<Layout
+  meta={{
+    title: 'NEXUS – Kokpit Subskrypcji',
+    description: 'Zarządzaj swoją autonomiczną kampanią. Bilingi, limity, i faktury.',
+  }}
+>
+  <Header data={payloadData?.header} slots={payloadData?.slots} />
+
+  <main class="min-h-screen pt-24 pb-12 px-4 relative">
+    <!-- Ambient glows -->
+    <div class="fixed top-0 left-1/4 w-[600px] h-[600px] bg-primary/10 blur-[200px] rounded-full pointer-events-none"></div>
+
+    <div class="max-w-4xl mx-auto w-full relative z-10">
+      <SubscriptionDashboard client:only="svelte" />
+    </div>
+
+  </main>
+
+  <Footer data={payloadData?.footer} />
+</Layout>

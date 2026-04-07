@@ -1,0 +1,53 @@
+---
+interface Props {
+  data?: {
+    title?: string;
+    items?: { question: string; answer: string }[];
+  };
+}
+
+const { data } = Astro.props;
+
+const title = data?.title || 'Pytania, które zadaje każdy prezes';
+const items = data?.items && data.items.length > 0 ? data.items : [
+  {
+    question: 'Czy to jest zgodne z RODO?',
+    answer: 'Tak. NEXUS działa wyłącznie na publicznie dostępnych danych firmowych i kontaktach B2B, w modelu "prawnie uzasadnionego interesu" (art. 6 RODO). Każda osoba może jednym kliknięciem trwale wypisać się z komunikacji – system blokuje dalsze wysyłki.'
+  },
+  {
+    question: 'Jak wygląda proces wdrożenia?',
+    answer: 'Po opłaceniu abonamentu przechodzimy przez krótką konsultację z człowiekiem. Ustalamy branże, check-listę leadów do odrzucenia, minimalną wartość kontraktu i scenariusze odpowiedzi. NEXUS startuje w ciągu 14 dni – od tego momentu każdy dzień bez niego to utracone zapytania z rynku.'
+  },
+  {
+    question: 'Czy mogę używać własnych domen?',
+    answer: 'Nie rekomendujemy. NEXUS korzysta z własnego klastra domen wysyłkowych, które są stale „rozgrzewane” i monitorowane. Twoja główna domena sprzedażowa pozostaje nienaruszona – nie ryzykujesz, że cała firma wyląduje w spamie przez jedną kampanię.'
+  }
+];
+---
+
+<section class="max-w-7xl mx-auto px-4 md:px-8 py-32 w-full fade-up">
+  <div class="max-w-4xl mx-auto w-full">
+    <h2 class="font-display text-4xl font-bold uppercase tracking-tighter mb-16 text-center">{title}</h2>
+    <div class="space-y-4">
+      {items.map((item) => (
+        <details class="glass rounded-2xl border-white/5 group hover:border-primary/30 transition-all duration-500 cursor-pointer overflow-hidden">
+          <summary class="p-6 flex justify-between items-center list-none">
+            <h4 class="font-display font-bold text-lg">{item.question}</h4>
+            <span class="material-symbols-outlined text-slate-500 group-open:text-primary group-open:rotate-180 transition-all duration-300">expand_more</span>
+          </summary>
+          <div class="px-6 pb-6 text-slate-500 text-sm animate-[fadeIn_0.3s_ease-out]">
+            {item.answer}
+          </div>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  details summary::-webkit-details-marker { display: none; }
+</style>

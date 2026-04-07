@@ -1,0 +1,115 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Header from "../../components/Header.astro";
+import Footer from "../../components/Footer.astro";
+import CtaSection from "../../components/CtaSection.astro";
+import { renderLexical } from "../../utils/lexicalToHtml";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+
+// Pobieranie danych dokumentu prawnego z CMS
+const response = await fetch(
+  `${(import.meta as any).env.PAYLOAD_URL || "http://localhost:3000"}/api/legal-documents?where[slug][equals]=${slug}&limit=1`,
+);
+const data = await response.json();
+const document = data.docs?.[0];
+
+if (!document) {
+  return Astro.redirect("/404");
+}
+
+// Pobieranie danych globali landing-page (header, footer, slots) – identycznie jak index.astro
+let payloadData: any = null;
+try {
+  const PAYLOAD_URL = (import.meta as any).env.PAYLOAD_URL || "http://localhost:3000";
+  const res = await fetch(`${PAYLOAD_URL}/api/globals/landing-page?depth=1`);
+  if (res.ok) {
+    payloadData = await res.json();
+  }
+} catch (err) {
+  console.error("Failed to fetch landing-page globals:", err);
+}
+
+// Generowanie HTML ze struktury Lexical JSON
+const htmlContent = document.content?.root
+  ? renderLexical(document.content.root)
+  : "";
+---
+
+<Layout title={`${document.title} | Nexus Agent`}>
+  <Header data={payloadData?.header} slots={payloadData?.slots} />
+  <div
+    class="min-h-screen bg-bg-dark text-slate-300 selection:bg-primary/30 selection:text-white pt-32 pb-20 relative overflow-hidden"
+  >
+    <!-- Tło (subtelny gradient) -->
+    <div
+      class="absolute top-0 inset-x-0 h-[500px] bg-linear-to-b from-primary/5 to-transparent pointer-events-none"
+    >
+    </div>
+
+    <main class="max-w-3xl mx-auto px-6 relative z-10">
+      <!-- Nagłówek powrotu -->
+      <a
+        href="/"
+        class="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-primary transition-colors mb-12 group"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="group-hover:-translate-x-1 transition-transform"
+          ><path d="m15 18-6-6 6-6"></path></svg
+        >
+        Wróć do strony głównej
+      </a>
+
+      <!-- Tytuł dokumentu -->
+      <h1
+        class="font-display font-bold text-4xl md:text-5xl lg:text-6xl text-white tracking-tighter mb-16 glow-text-sm"
+      >
+        {document.title}
+      </h1>
+
+      <!-- Treść z Lexical Editor -->
+      <article
+        class="prose prose-invert prose-slate max-w-none prose-p:leading-relaxed prose-a:text-primary prose-a:no-underline hover:prose-a:underline hover:prose-a:text-white prose-headings:font-display prose-headings:tracking-tight prose-h2:mt-12 prose-h3:mt-8"
+      >
+        <div set:html={htmlContent} />
+      </article>
+
+      <!-- Przycisk powrotu na dole -->
+      <div class="mt-20 pt-12 border-t border-white/5 flex justify-center">
+        <a
+          href="/"
+          class="inline-flex items-center gap-3 bg-primary text-bg-dark font-display font-bold text-xs uppercase px-8 py-4 rounded-full hover:brightness-110 hover:scale-105 transition-all duration-300 neon-shadow-cyan"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            ><path d="m15 18-6-6 6-6"></path></svg
+          >
+          Powrót do strony głównej
+        </a>
+      </div>
+    </main>
+  </div>
+
+  <CtaSection data={payloadData?.cta} />
+  <Footer data={payloadData?.footer} />
+</Layout>
+

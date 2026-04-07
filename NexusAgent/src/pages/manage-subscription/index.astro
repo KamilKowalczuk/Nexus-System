@@ -1,0 +1,51 @@
+---
+export const prerender = false;
+
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import ManageAuth from '../../components/ManageAuth.svelte';
+import { verifySession } from '../../utils/session';
+
+let payloadData = null;
+try {
+  const PAYLOAD_URL = import.meta.env.PAYLOAD_URL || 'http://127.0.0.1:3000';
+  const res = await fetch(`${PAYLOAD_URL}/api/globals/landing-page?depth=1`);
+  if (res.ok) payloadData = await res.json();
+} catch {
+  // fallback do domyślnych wartości headera
+}
+
+// Opcjonalnie: Przekierowanie, jak user jest już zalogowany 
+// (posiada valid ciastko 'nexus_sub_session')
+const sessionCookie = Astro.cookies.get('nexus_sub_session')?.value;
+const secret = import.meta.env.PAYLOAD_API_KEY;
+
+if (secret) {
+  try {
+    if (verifySession(sessionCookie, secret)) {
+      return Astro.redirect('/manage-subscription/dashboard');
+    }
+  } catch(e) {}
+}
+---
+
+<Layout
+  meta={{
+    title: 'NEXUS – Autoryzacja Dostępu',
+    description: 'Zarządzaj swoją autonomiczną kampanią. Uzyskaj dostęp do panelu NEXUS Agent po podaniu emaila i numeru zamówienia.',
+  }}
+>
+  <Header data={payloadData?.header} slots={payloadData?.slots} />
+
+  <main class="min-h-screen flex flex-col items-center justify-center px-4 py-24 relative overflow-hidden">
+    <!-- Ambient glows -->
+    <div class="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary/8 blur-[160px] rounded-full pointer-events-none"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-accent/8 blur-[140px] rounded-full pointer-events-none"></div>
+
+    <ManageAuth client:only="svelte" />
+
+  </main>
+
+  <Footer data={payloadData?.footer} />
+</Layout>

@@ -1,0 +1,116 @@
+---
+import RequestLinkForm from "./RequestLinkForm.svelte";
+
+interface Props {
+  data?: {
+    copyright?: string;
+    status?: string;
+    navLinks?: { label: string; url: string }[];
+  };
+}
+
+const { data } = Astro.props;
+
+const year = new Date().getFullYear();
+
+const copyright =
+  data?.copyright ||
+  `© ${year} NEXUS AGENT. Każdy dzień bez outboundu, to klient, którego zdobył ktoś inny.`;
+const status =
+  data?.status ||
+  "Pozyskiwanie klientów bez rekrutacji · Twarde liczby co 3 dni · Płacisz za wyniki, nie za obecność";
+const navLinks =
+  data?.navLinks && data.navLinks.length > 0
+    ? data.navLinks
+    : [
+        { label: "Demo", url: "/#demo" },
+        { label: "Proces", url: "/#engine" },
+        { label: "Kalkulator", url: "/#pricing" },
+        { label: "Zaufanie", url: "/#security" },
+        { label: "Regulamin", url: "/dokumenty/regulamin" },
+        {
+          label: "Polityka Prywatności",
+          url: "/dokumenty/polityka-prywatnosci",
+        },
+        { label: "RODO", url: "/dokumenty/rodo" },
+      ];
+---
+
+<footer
+  class="mt-auto border-t border-white/5 bg-black/60 py-20 px-8 relative overflow-hidden"
+>
+  <div class="max-w-7xl mx-auto flex flex-col gap-16 relative z-10">
+    <!-- Top row: Logo + Nav -->
+    <div class="flex flex-col md:flex-row justify-between items-center gap-12">
+      <a href="/" class="group">
+        <img
+          src="/logo.webp"
+          alt="Nexus Agent"
+          loading="lazy"
+          decoding="async"
+          width="140"
+          height="140"
+          class="h-35 w-auto auto-glitch"
+        />
+      </a>
+
+      <div
+        class="flex flex-wrap justify-center gap-10 text-[10px] font-mono text-slate-500 uppercase tracking-widest"
+      >
+        {
+          navLinks.map((link) => (
+            <a
+              class="hover:text-primary transition-colors duration-300"
+              href={link.url}
+            >
+              {link.label}
+            </a>
+          ))
+        }
+        <!-- Link do formularza edycji briefu (tylko dla klientów) -->
+        <button
+          id="open-brief-form"
+          onclick="document.dispatchEvent(new CustomEvent('open-brief-form'))"
+          class="hover:text-cyan-400 transition-colors duration-300 cursor-pointer bg-transparent border-none p-0 font-mono text-[10px] uppercase tracking-widest text-slate-500"
+        >
+          Edytuj / wyślij ponownie brief
+        </button>
+
+        <!-- Link do kokpitu zarządzania subskrypcją -->
+        <a
+          href="/manage-subscription"
+          class="hover:text-cyan-400 transition-colors duration-300 cursor-pointer text-slate-500 font-mono text-[10px] uppercase tracking-widest"
+        >
+          Zarządzaj Subskrypcją
+        </a>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div
+      class="w-full h-px bg-linear-to-r from-transparent via-white/10 to-transparent"
+    >
+    </div>
+
+    <!-- Bottom row: Copyright + Status -->
+    <div
+      class="flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left"
+    >
+      <div class="text-[10px] font-mono text-slate-600 uppercase">
+        {copyright}
+      </div>
+      <div class="text-[10px] font-mono text-slate-600 uppercase auto-glitch">
+        {status}
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom ambient glow -->
+  <div
+    class="absolute -bottom-20 left-1/2 -translate-x-1/2 w-[600px] h-40 bg-primary/5 blur-[120px] rounded-full"
+  >
+  </div>
+</footer>
+
+<!-- Modal formularza edycji briefu -->
+<RequestLinkForm client:load />
