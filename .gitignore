@@ -1,0 +1,59 @@
+# ========================
+# SEKRETY I KONFIGURACJA
+# ========================
+.env
+.env.*
+!.env.example
+
+# ========================
+# DANE LOKALNE (DOCKER)
+# ========================
+data/postgres/
+data/redis/
+
+# ========================
+# BACKUPY BAZY DANYCH
+# ========================
+backups/
+*.dump
+*.sql
+files/backups/
+
+# ========================
+# PLIKI KLIENTÓW I KAMPANII
+# ========================
+# Dane wrażliwe — CV, raporty, logi kampanii, loga klientów
+files/*
+!files/.gitkeep
+
+# ========================
+# PYTHON
+# ========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ========================
+# CLAUDE CODE (sesje lokalne)
+# ========================
+.claude/
+
+# ========================
+# SYSTEM / EDYTORY
+# ========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

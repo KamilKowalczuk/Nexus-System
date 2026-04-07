@@ -1,0 +1,50 @@
+# Baza danych (PostgreSQL) jest na Railway — nie ma tu lokalnego postgresa
+
+services:
+  # 1. KOLEJKA (Redis) — tylko lokalnie, nie wystawiony na zewnątrz
+  redis:
+    image: redis:alpine
+    container_name: agency_redis
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - agency_net
+
+  # 2. SILNIK NEXUS (główna aplikacja)
+  nexus:
+    build: .
+    container_name: agency_nexus
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - ./files:/app/files
+      - ./backups:/app/backups
+    networks:
+      - agency_net
+
+  # 3. GUI BAZY DANYCH (NocoDB) — łączy się z Railway przez DATABASE_URL z .env
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: agency_nocodb
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      NC_DB: "${NC_DB}"
+      NC_HOST: "0.0.0.0"
+      NC_PORT: "8080"
+      NC_ALLOW_ORIGIN: "*"
+    networks:
+      - agency_net
+
+networks:
+  agency_net:
+    driver: bridge

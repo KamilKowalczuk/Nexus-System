@@ -1,0 +1,93 @@
+from sqlalchemy import text
+from app.database import engine, Base
+
+
+# ---------------------------------------------------------------------------
+# MIGRACJE KOLUMN (dla istniejących baz danych)
+# ---------------------------------------------------------------------------
+# Uwaga: Base.metadata.create_all() tworzy NOWE tabele, ale nie dodaje kolumn
+# do już istniejących. Poniższe migracje używają "ADD COLUMN IF NOT EXISTS"
+# (składnia PostgreSQL 9.6+), więc są bezpieczne do wielokrotnego uruchamiania.
+
+_COLUMN_MIGRATIONS = [
+    # Tabela: opt_outs — migracja schematu (email_hash → value_hash + entry_type)
+    # RENAME jest idempotentne tylko jeśli kolumna istnieje — obsługujemy błąd cicho
+    "ALTER TABLE opt_outs RENAME COLUMN email_hash TO value_hash",
+    "ALTER TABLE opt_outs ADD COLUMN IF NOT EXISTS entry_type VARCHAR(10) NOT NULL DEFAULT 'EMAIL'",
+
+    # Tabela: clients — pola RODO/Compliance (dodane w Phase 3)
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS privacy_policy_url VARCHAR",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS opt_out_link VARCHAR",
+
+    # Tabela: clients — pola warm-up (na wypadek starszych schematów)
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS warmup_enabled BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS warmup_start_limit INTEGER DEFAULT 2",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS warmup_increment INTEGER DEFAULT 2",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS warmup_started_at TIMESTAMP",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS sending_mode VARCHAR DEFAULT 'DRAFT'",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS attachment_filename VARCHAR",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS html_footer VARCHAR",
+
+    # Tabela: leads — pola inbox/reply (na wypadek starszych schematów)
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS replied_at TIMESTAMP",
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS reply_content VARCHAR",
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS reply_sentiment VARCHAR",
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS reply_analysis VARCHAR",
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMP",
+]
+
+
+def _run_migrations(conn) -> None:
+    """
+    Uruchamia bezpieczne (idempotentne) migracje kolumn.
+
+    Każda instrukcja jest owinięta w SAVEPOINT, dzięki czemu błąd jednej migracji
+    (np. RENAME nieistniejącej kolumny w świeżej bazie) nie przerywa całej transakcji
+    i nie blokuje pozostałych migracji.
+    """
+    print("🔧 Uruchamiam migracje kolumn...")
+    ok_count = 0
+    skip_count = 0
+    for i, sql in enumerate(_COLUMN_MIGRATIONS):
+        sp = f"sp_migration_{i}"
+        try:
+            conn.execute(text(f"SAVEPOINT {sp}"))
+            conn.execute(text(sql))
+            conn.execute(text(f"RELEASE SAVEPOINT {sp}"))
+            ok_count += 1
+        except Exception as e:
+            conn.execute(text(f"ROLLBACK TO SAVEPOINT {sp}"))
+            skip_count += 1
+            # Ignoruj "already exists" / "does not exist" — to normalne przy idempotentnych migracjach
+            err_str = str(e)
+            if "already exists" in err_str or "does not exist" in err_str:
+                pass  # Kolumna już istnieje lub nie ma czego rename'ować — OK
+            else:
+                print(f"   ⚠️  {sql[:70]}...")
+                print(f"        → {err_str[:120]}")
+
+    print(f"   ✅ Migracje: {ok_count} wykonanych, {skip_count} pominiętych (już istnieją lub N/A)")
+
+
+def init_db() -> None:
+    print("🚀 Inicjalizacja Agency OS Database...")
+
+    with engine.begin() as conn:
+        # 1. Tworzenie NOWYCH tabel (istniejące są pomijane)
+        Base.metadata.create_all(bind=engine)
+        print("✅ Tabele sprawdzone / utworzone:")
+        print("   - clients          (Client DNA)")
+        print("   - global_companies (Knowledge Graph)")
+        print("   - campaigns")
+        print("   - leads")
+        print("   - opt_outs         (RODO Blacklist — hash-only)")
+        print("   - search_history")
+
+        # 2. Migracje kolumn dla istniejących tabel
+        _run_migrations(conn)
+
+    print("\n✅ Baza danych gotowa do pracy.")
+
+
+if __name__ == "__main__":
+    init_db()
