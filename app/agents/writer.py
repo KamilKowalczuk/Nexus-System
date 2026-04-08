@@ -315,6 +315,26 @@ def _generate_email_sync(session: Session, lead_id: int):
         )
     except Exception as e:
         logger.error(f"❌ Writer error ({writer_model}): {e}")
+        
+        # --- PATIENCE DLA OVERLOADED (529) ---
+        err_str = str(e).lower()
+        if "529" in err_str or "overloaded" in err_str:
+            try:
+                from app.cache_manager import cache_manager
+                retry_key = f"writer_overload_retry:{lead.id}"
+                attempts = cache_manager.redis.incr(retry_key)
+                if attempts == 1:
+                    cache_manager.redis.expire(retry_key, 3600) # żyje 1h
+                
+                if attempts < 3:
+                    logger.warning(f"   ⏳ API {writer_model} przeciążone (próba {attempts}/3). Zostawiam do ponowienia w następnym cyklu.")
+                    return # Wychodzimy bez fallow-upu, status: ANALYZED
+                else:
+                    logger.warning(f"   🛑 {writer_model} zajęty przez 3 cykle. Czas na przymusowy FALLBACK.")
+                    cache_manager.redis.delete(retry_key)
+            except ImportError:
+                pass # Brak cache (np. w testach) - fallujemy natychmiast
+                
         # --- FALLBACK: próba z domyślnym modelem Gemini ---
         if writer_model != DEFAULT_MODEL:
             logger.warning(f"   🔄 FALLBACK: Próbuję z domyślnym modelem {DEFAULT_MODEL}...")
@@ -592,6 +612,11 @@ Twoje zasady życiowe jako handlowca:
 - Nie prosisz o czas ("Czy moglibyśmy porozmawiać?"). Zamiast tego pytasz o problem.
 - Nie sprzedajesz w pierwszym mailu. Budujesz ciekawość.
 - Piszesz tak, jakbyś pisał do znajomego z branży — z szacunkiem, ale bez sztywności.
+
+=== 🛑 ZASADA TWARDEGO TRZYMANIA SIĘ FAKTÓW 🛑 ===
+ABSOLUTNY ZAKAZ zgadywania i dodawania usług, programów, procedur ani cech odbiorcy, których nie ma wprost wymienionych w sekcji DANE (w szczególności w 'Icebreaker' lub 'Profil').
+Jeśli wiesz jaka to branża (np. "Ośrodek Zdrowia"), NIE WOLNO Ci zmyślać i wymieniać standardowych usług dla tej branży (np. "szczepienia, opieka pielęgniarska"), chyba że badanie wprost to potwierdziło!
+Wymyślanie usług to kłamstwo, które rujnuje rzetelność w zimnych mailach. Lepiej sformułować to ogólnie (np. "rozliczenia NFZ w Państwa przychodni"), niż zmyślać konkretne procedury! Działaj TYLKO na twardych danych.
 
 === DANE ===
 {data_block}

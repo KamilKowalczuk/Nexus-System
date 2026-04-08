@@ -19,7 +19,7 @@ logger = logging.getLogger("nexus_alerts")
 PL_TZ = ZoneInfo("Europe/Warsaw")
 
 # Konfiguracja SMTP operatora — z env vars
-_SMTP_SERVER = "mail.purelymail.com"
+_SMTP_SERVER = "smtp.purelymail.com"
 _SMTP_PORT = 465
 _EMAIL_USER = os.getenv("EMAIL_USER", "")
 _EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")

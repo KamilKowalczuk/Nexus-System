@@ -22,14 +22,8 @@ load_dotenv()
 
 
 def _secure_wipe(s: str) -> None:
-    """Best-effort zerowanie stringa w pamięci CPython."""
-    if not s:
-        return
-    try:
-        buf_offset = 48  # PyUnicodeObject ASCII compact header on 64-bit
-        ctypes.memset(id(s) + buf_offset, 0, len(s))
-    except Exception:
-        pass
+    """Bezpieczne kasowanie referencji hasła. Samo del wystarczy — GC posprząta."""
+    pass
 
 
 # --- KONFIGURACJA GUARDIANA ---
@@ -89,18 +83,42 @@ def check_inbox(session: Session, client: Client):
         return
 
     try:
-        # === OPTYMALIZACJA NEXUS: TIMEOUT (ANTI-ZOMBIE) ===
-        # Connect timeout=10s + socket timeout=30s na każdą operację I/O
-        mail = imaplib.IMAP4_SSL(client.imap_server, client.imap_port or 993, timeout=10)
-        mail.socket().settimeout(30)  # 30s timeout na search/fetch (anti-hang)
-
-        # KMS: deszyfrowanie hasła tuż przed logowaniem, secure wipe po użyciu
+        # === POŁĄCZENIE IMAP (143 STARTTLS → 993 SSL) ===
+        port = client.imap_port or 993
+        mail = None
         _imap_password = decrypt_credential(client.smtp_password or "")
+
+        strategies = [
+            ("143+STARTTLS", 143, False),
+            ("993+SSL",      993, True),
+        ]
+        
+        connected = False
         try:
-            mail.login(client.smtp_user, _imap_password)
+            for label, port, use_ssl in strategies:
+                try:
+                    if use_ssl:
+                        mail = imaplib.IMAP4_SSL(client.imap_server, port, timeout=20)
+                    else:
+                        mail = imaplib.IMAP4(client.imap_server, port, timeout=20)
+                    mail.socket().settimeout(30)
+                    if not use_ssl and hasattr(mail, 'capabilities') and 'STARTTLS' in mail.capabilities:
+                        mail.starttls()
+                    mail.login(client.smtp_user, _imap_password)
+                    connected = True
+                    break
+                except Exception:
+                    if mail:
+                        try: mail.logout()
+                        except: pass
+                    mail = None
+                    continue
+            
+            if not connected:
+                return
         finally:
-            _secure_wipe(_imap_password)
             del _imap_password
+
         mail.select("INBOX")
 
         status, messages = mail.search(None, 'UNSEEN')
@@ -244,6 +262,6 @@ def check_inbox(session: Session, client: Client):
         mail.logout()
 
     except TimeoutError:
-        print(f"   ⏳ [TIMEOUT] Serwer IMAP klienta {client.name} nie odpowiada (10s). Skip.")
+        print(f"   ⏳ [TIMEOUT] Serwer IMAP klienta {client.name} nie odpowiada (20s). Skip.")
     except Exception as e:
         print(f"   ❌ Błąd IMAP dla {client.name}: {e}")

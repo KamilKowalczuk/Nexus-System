@@ -132,7 +132,7 @@ def extract_emails_from_html(raw_html: str) -> list:
         # Blokada śmieciowych słów kluczowych w całym adresie
         if any(x in email for x in ['sentry', 'noreply', 'no-reply', 'example.com', 'example.pl',
                                       'bootstrap', 'react', 'webmaster', 'donotreply', 'do-not-reply',
-                                      'spam', 'test@', 'demo@', 'sample@']):
+                                      'spam', 'test@', 'demo@', 'sample@', 'rodo', 'iod@', 'iodo@', 'dpo@', 'inspektor']):
             continue
 
         # Blokada placeholderów w części lokalnej (np. "email@firma.pl", "your@firma.pl")
@@ -537,9 +537,10 @@ Produkty/usługi: {", ".join(research.key_products or [])}
 === ZASADY OCENY ===
 1. Jeśli firma ma negatywne "Sygnały Krytyczne" (np. nie przyjmuje nowych pacjentów, zawiesiła działalność, jest w likwidacji) → approved=False.
 2. Jeśli firma narusza którykolwiek TWARDY ZAKAZ → approved=False, bez wyjątków.
-3. Jeśli firma choćby częściowo pasuje do ICP i nie narusza zakazów → approved=True.
-4. W razie wątpliwości co do ICP — przepuść. W razie wątpliwości co do zakazu — ODRZUĆ.
-5. MARTWE STRONY: WIEK strony NIE jest powodem do odrzucenia. Odrzucaj TYLKO przez zakazy, brak pacjentów lub ICP mismatch."""
+3. Jeśli branża firmy jest CAŁKOWICIE INNA niż zakłada ICP (np. szukasz placówek medycznych, a trafiasz na IT, cyberbezpieczeństwo lub biuro rachunkowe) → approved=False. Nie naciągaj na siłę!
+4. Jeśli firma choćby częściowo pasuje do ICP i nie narusza zakazów → approved=True.
+5. W razie wątpliwości czy firma pasuje do targetu — ODRZUĆ (approved=False). Chronimy bazę przed spamowaniem przypadkowych firm.
+6. MARTWE STRONY: WIEK strony NIE jest powodem do odrzucenia. Odrzucaj TYLKO przez zakazy, brak pacjentów lub ICP mismatch."""
 
     try:
         gatekeeper_llm = create_structured_llm(researcher_model, _GatekeeperVerdict, temperature=0.0)
@@ -599,6 +600,19 @@ def analyze_lead(session: Session, lead_id: int):
 
     if not content_md and not regex_emails:
         print(f"      ❌ PUSTY ZWIAD. Próba 404.")
+        lead.status = "MANUAL_CHECK"
+        session.commit()
+        return
+
+    # === ANTY-CLOUDFLARE & ANTY-404 GUARD ===
+    md_lower = content_md.lower()
+    block_keywords = [
+        "cloudflare", "verify you are a human", "checking your browser",
+        "access denied", "error 404", "404 not found", "błąd 404", "nie znaleziono strony"
+    ]
+    # Odrzucamy zgryz jeśli strona jest krótka i wprost krzyczy o zablokowaniu
+    if len(content_md) < 5000 and any(k in md_lower for k in block_keywords):
+        print(f"      🛡️ WARN: Wykryto Firewall/404 dla {company.domain}. Odrzucam śmieciowy zwiad.")
         lead.status = "MANUAL_CHECK"
         session.commit()
         return
@@ -763,6 +777,7 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
 
 === ŻELAZNE REGUŁY ===
 - ZERO halucynacji. Każdy fakt musi mieć źródło na stronie.
+- ODRZUĆ ŚMIECI SCRAPERA: Bezwzględnie zignoruj wszystkie techniczne błędy typu "Błąd 404", "Cloudflare", "Access Denied", "Nie znaleziono strony" — to brudy techniczne, a nie prawdziwe problemy firmy! Nigdy nie wymieniaj błędu 404 jako Pain Pointu, chyba że klient specjalizuje się w naprawie błędów serwerowych.
 - Puste pole > zmyślony fakt. Zawsze.
 - Jeśli strona ma mało treści — wyciągnij co się da, resztę zostaw pustą.
 - Nie powtarzaj tych samych informacji w różnych polach.
@@ -802,7 +817,7 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
 Jeśli Icebreaker lub Pain Points przypisują firmie usługi/programy/cechy których nie ma na stronie (np. wymyślają nazwy systemów lub procesów, o których HTML nie wspomina) - natychmiast to odrzuć. Uważaj: jeśli tekst wspomina o danym programie, to NIE JEST to halucynacja.
 
 FAKTY ZAWARTE W HTML (Surowy tekst):
-{content_md[:15000]}
+{content_md[:70000]}
 
 DO WERYFIKACJI:
 ICEBREAKER: {research.icebreaker}
@@ -891,8 +906,30 @@ Zwróć TYLKO jedno zdanie, nic więcej."""
             logger.error(f"      ❌ Błąd w FactChecker (Internet): {e}")
 
     # 3. SCORING & SELECTION
-    combined_emails = list(set((research.contact_emails or []) + regex_emails))
+    _raw_combined = list(set((research.contact_emails or []) + regex_emails))
     
+    # Globalna blokada Freemaili (zwalczanie adresów wygenerowanych przez LLM)
+    FREEMAILS = {
+        'wp.pl', 'o2.pl', 'onet.pl', 'onet.eu', 'op.pl', 'interia.pl', 'interia.eu', 'interia.com',
+        'poczta.fm', 'tlen.pl', 'gazeta.pl', 'go2.pl', 'vp.pl', 'spoko.pl', 'vip.interia.pl',
+        'autograf.pl', 'int.pl', 'aqq.eu', 'poczta.onet.pl', 'poczta.wp.pl', 'pro.wp.pl',
+        'o2.eu', 'buziaczek.pl', 'amorki.pl', 'lubie.to', 'poczta.interia.pl',
+        'gmail.com', 'googlemail.com', 'hotmail.com', 'outlook.com', 'live.com', 
+        'msn.com', 'windowslive.com', 'passport.com', 'outlook.eu', 'hotmail.co.uk',
+        'yahoo.com', 'ymail.com', 'rocketmail.com', 'aol.com', 'aim.com',
+        'icloud.com', 'me.com', 'mac.com', 'protonmail.com', 'proton.me', 'pm.me',
+        'tutanota.com', 'tuta.io', 'mail.com', 'zoho.com', 'yandex.com', 'gmx.com'
+    }
+    
+    combined_emails = []
+    for email in _raw_combined:
+        if not email or "@" not in email: continue
+        domain_part = email.split('@')[1].lower().strip()
+        if domain_part in FREEMAILS:
+            print(f"      🚫 FREEMAIL KWARANTANNA: Odrzucono '{email}' (LLM Leak)")
+            continue
+        combined_emails.append(email.lower())
+        
     def score_email(email):
         s = 0
         e = email.lower()
@@ -902,12 +939,26 @@ Zwróć TYLKO jedno zdanie, nic więcej."""
             if any(x in e for x in ['ceo', 'founder']): s += 15
         else:
             if any(x in e for x in ['ceo', 'owner', 'founder', 'prezes']): s += 20
-            if any(x in e for x in ['kariera', 'jobs', 'rekrutacja']): s -= 20 
+            if any(x in e for x in ['kariera', 'jobs', 'rekrutacja', 'iodo', 'rodo', 'dpo', 'inspektor']): s -= 200 
             
         if any(x in e for x in ['biuro', 'info', 'hello', 'kontakt', 'office']): s += 15
         if '.' in e.split('@')[0]: s += 5
+        
+        # --- WALIDACJA ZGODNOŚCI DOMENY ---
+        # Zapobiega wysyłaniu na adresy zewnętrznych dostawców IT / RODO z innej domeny
+        email_domain = e.split('@')[1] if '@' in e else ""
+        target_domain = (company.domain or "").lower().replace("www.", "")
+        target_root = target_domain.split('.')[-2] if len(target_domain.split('.')) >= 2 else target_domain
+        
+        if email_domain == target_domain:
+            s += 100  # Dokładne trafienie w domenę firmy - najwyższy priorytet
+        elif target_root and target_root in email_domain:
+            s += 50   # Poddomeny lub pokrewne
+        else:
+            s -= 80   # Silna kara za obcą domenę (to zewnętrzni dostawcy obsługujący RODO/WWW)
+
         # Tu używamy tylko darmowego MX check do sortowania (nie płacimy jeszcze)
-        if not verify_email_mx(e): s -= 100 
+        if not verify_email_mx(e): s -= 200 
         return s
 
     scored = []
@@ -925,7 +976,7 @@ Zwróć TYLKO jedno zdanie, nic więcej."""
     debounce_is_down = False
 
     for candidate, score in scored:
-        if score < -20: continue # Szkoda kasy na śmieci
+        if score < -50: continue # Odrzucamy obce domeny poniżej progu i inbalidy
 
         print(f"      🛡️ Weryfikacja DeBounce dla: {candidate}...")
         status = verify_email_deep(candidate)  # ← This now uses Redis cache!
@@ -981,6 +1032,7 @@ Zwróć TYLKO jedno zdanie, nic więcej."""
     company.tech_stack = research.tech_stack
     company.decision_makers = research.decision_makers
     company.industry = research.target_audience
+    company.pain_points = research.pain_points_or_opportunities
     company.last_scraped_at = datetime.now(PL_TZ)
     
     verified_name = (research.verified_contact_name or "").strip() or None

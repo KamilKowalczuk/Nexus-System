@@ -161,7 +161,7 @@ Tryb: {mode} (SALES = szuka klientów do sprzedaży, JOB_HUNT = szuka pracodawc�
 
 === PRIORYTET DECYZYJNY ===
 1. NAJPIERW sprawdź TWARDE ZAKAZY (sekcja powyżej). Jeśli firma pasuje do zakazu → ODRZUĆ. Koniec analizy dla tej firmy.
-2. Czy KATEGORIA pasuje do ICP? Nie wymagaj perfekcji — pokrewna branża wystarczy.
+2. Czy KATEGORIA pasuje do ICP? Bądź BEZWZGLĘDNY. Jeśli szukamy lekarzy, a to jest agencja marketingowa dla lekarzy — ODRZUĆ. Jeśli szukamy szpitali, a to jest firma produkująca łóżka — ODRZUĆ. Kategoria i działalność musi w 100% pasować do ICP.
 3. Czy SKALA jest akceptowalna? Odrzucaj ewidentne korporacje i holdingi z wieloma oddziałami. Instytucje publiczne (urzędy, NFZ, ZUS) — zawsze odrzuć, chyba że ICP tego wymaga.
 4. Czy to ewidentna konkurencja klienta? (DOKŁADNIE ta sama usługa = ODRZUĆ w trybie SALES).
 
@@ -169,7 +169,7 @@ Tryb: {mode} (SALES = szuka klientów do sprzedaży, JOB_HUNT = szuka pracodawc�
 - Pasuje do TWARDYCH ZAKAZÓW — zawsze, bez wyjątków
 - Domena to znany portal/agregator/marketplace
 - Ewidentna wielka korporacja lub instytucja publiczna (NFZ, ZUS, urząd, szpital publiczny)
-- Oczywisty mismatch z ICP
+- Niezgodność branży z ICP (nawet jeśli branża "krąży" wokół ICP, masz odrzucać, o ile nie jest DOKŁADNYM celem)
 
 === KIEDY PRZEPUŚCIĆ ===
 - Firma nie pasuje do żadnego zakazu i jest w obszarze ICP
@@ -189,7 +189,7 @@ Dla każdego kandydata: NAJPIERW sprawdź zakazy, potem ICP. Zatwierdź tylko fi
         print(f"      🤖 [AI GATEKEEPER] Analizuję {len(candidates)} kandydatów...")
         result = await gatekeeper.ainvoke([
             SystemMessage(content=system_prompt),
-            HumanMessage(content="Przeprowadź selekcję. Odrzuć oczywiste śmieci, przepuść rozsądne dopasowania. W razie wątpliwości — TAK."),
+            HumanMessage(content="Przeprowadź selekcję. Bądź wyjątkowo surowym sędzią. Odrzuć wszystko, co nie jest dokładnym celem wg ICP. Lepiej odrzucić dobry lead niż przepuścić zły!"),
         ])
 
         valid_domains = [v.domain for v in result.valid_domains]

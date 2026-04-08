@@ -53,13 +53,20 @@ def get_main_domain_url(url: str) -> str:
 def verify_email_mx(email: str) -> bool:
     """
     Szybka, darmowa weryfikacja DNS/MX.
+    Fail-open - jeśli DNS ma czkawkę, przepuszczamy (DeBounce wyłapie).
     """
     try:
         domain = email.split('@')[1]
-        records = dns.resolver.resolve(domain, 'MX')
+        res = dns.resolver.Resolver()
+        res.nameservers = ['8.8.8.8', '1.1.1.1']
+        res.lifetime = 5.0
+        records = res.resolve(domain, 'MX')
         return len(records) > 0
-    except:
+    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
         return False
+    except Exception:
+        # Timeout lokalnego resolvowania
+        return True
 
 def verify_sender_dns(domain: str) -> dict:
     """
@@ -70,21 +77,27 @@ def verify_sender_dns(domain: str) -> dict:
     domain = domain.lower().replace("www.", "").strip()
     status = {"spf_ok": False, "dmarc_ok": False, "error": None}
     
+    # Custom robust DNS resolver to avoid 127.0.0.53 timeouts
+    res = dns.resolver.Resolver()
+    res.nameservers = ['8.8.8.8', '1.1.1.1']
+    res.lifetime = 10.0
+    res.timeout = 5.0
+    
     try:
         # Check SPF (TXT na domenie głównej)
         try:
-            txt_records = dns.resolver.resolve(domain, 'TXT')
+            txt_records = res.resolve(domain, 'TXT')
             for rdata in txt_records:
                 txt_text = "".join([t.decode() for t in rdata.strings]).lower()
                 if txt_text.startswith("v=spf1"):
                     status["spf_ok"] = True
                     break
-        except dns.resolver.NoAnswer:
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             pass
 
         # Check DMARC (TXT na poddomenie _dmarc)
         try:
-            dmarc_records = dns.resolver.resolve(f"_dmarc.{domain}", 'TXT')
+            dmarc_records = res.resolve(f"_dmarc.{domain}", 'TXT')
             for rdata in dmarc_records:
                 txt_text = "".join([t.decode() for t in rdata.strings]).lower()
                 if txt_text.startswith("v=dmarc1"):
@@ -95,7 +108,10 @@ def verify_sender_dns(domain: str) -> dict:
 
     except Exception as e:
         status["error"] = str(e)
-        logger.error(f"[DNS VERIFIER] Błąd podczas sprawdzania rekordu '{domain}': {e}")
+        # Błąd resolvera (np. timeout) nie powinien blokować sprzedaży
+        status["spf_ok"] = True
+        status["dmarc_ok"] = True
+        logger.error(f"[DNS VERIFIER] Sieciowy błąd podczas sprawdzania rekordu '{domain}': {e} -> FAIL-OPEN (przepuszczam)")
         
     return status
 

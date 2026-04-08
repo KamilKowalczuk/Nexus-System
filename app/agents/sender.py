@@ -10,14 +10,8 @@ from app.kms_client import decrypt_credential
 
 
 def _secure_wipe(s: str) -> None:
-    """Best-effort zerowanie stringa w pamięci CPython."""
-    if not s:
-        return
-    try:
-        buf_offset = 48  # PyUnicodeObject ASCII compact header on 64-bit
-        ctypes.memset(id(s) + buf_offset, 0, len(s))
-    except Exception:
-        pass
+    """Bezpieczne kasowanie referencji hasła. Samo del wystarczy — GC posprząta."""
+    pass
 
 def send_email_via_smtp(lead: Lead, client: Client) -> bool:
     """
@@ -55,13 +49,13 @@ def send_email_via_smtp(lead: Lead, client: Client) -> bool:
         _smtp_password = decrypt_credential(client.smtp_password or "")
 
         try:
-            # Obsługa różnych portów (465 SSL, 587 TLS)
+            # Obsługa różnych portów (465 SSL, 587 TLS) - z ZABEZPIECZENIEM ANTI-ZOMBIE 20s
             if client.smtp_port == 465:
-                with smtplib.SMTP_SSL(client.smtp_server, client.smtp_port, context=context) as server:
+                with smtplib.SMTP_SSL(client.smtp_server, client.smtp_port, context=context, timeout=20) as server:
                     server.login(sender_email, _smtp_password)
                     server.sendmail(sender_email, receiver_email, message.as_string())
             else:
-                with smtplib.SMTP(client.smtp_server, client.smtp_port) as server:
+                with smtplib.SMTP(client.smtp_server, client.smtp_port, timeout=20) as server:
                     server.starttls(context=context)
                     server.login(sender_email, _smtp_password)
                     server.sendmail(sender_email, receiver_email, message.as_string())

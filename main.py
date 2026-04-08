@@ -63,6 +63,11 @@ DISPATCHER_INTERVAL = 5
 # --- HEARTBEAT (sygnał życia dla GUI) ---
 HEARTBEAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine.heartbeat")
 
+# --- INBOX CACHE (unikamy logowania do IMAP co 5s) ---
+_last_inbox_check: dict[int, float] = {}
+_client_imap_errors: dict[int, float] = {}  # client -> error timestamp
+IMAP_ERROR_COOLDOWN = 15 * 60  # 15 minut blokowania po fail2ban/timeout
+
 # --- DNS CACHE (unikamy DNS lookup co 5s per klient) ---
 _dns_cache: dict[str, tuple[bool, float]] = {}  # domain -> (passed, timestamp)
 _DNS_CACHE_TTL = 3600  # 1 godzina
@@ -101,6 +106,7 @@ BACKUP_INTERVAL_SECONDS = 6 * 3600
 BRIEF_SYNC_INTERVAL = 30 * 60  # Sprawdzaj zmiany w briefach co 30 minut
 USE_QUEUES = os.getenv("USE_QUEUES", "false").lower() == "true"
 STATS_INTERVAL = 300
+INBOX_CHECK_INTERVAL = 120  # Sprawdzaj skrzynkę co 2 minuty (Anti-Spam)
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +164,16 @@ def _get_pipeline_counts(session: Session, client: Client) -> dict:
 
 async def _handle_hygiene(session: Session, client: Client, use_queues: bool) -> None:
     """FAZA 0: Sprawdza skrzynkę i przetwarza follow-upy."""
-    await asyncio.to_thread(check_inbox, session, client)
+    now = time.time()
+    last_check = _last_inbox_check.get(client.id, 0)
+    
+    if now - last_check > INBOX_CHECK_INTERVAL:
+        if now - _client_imap_errors.get(client.id, 0) > IMAP_ERROR_COOLDOWN:
+            await asyncio.to_thread(check_inbox, session, client)
+            _last_inbox_check[client.id] = now
+        else:
+            console.print(f"[yellow]⏳ {client.name}:[/yellow] IMAP Cooldown aktywny. Pomijam check_inbox.")
+        
     await asyncio.to_thread(process_followups, session, client, use_queue=use_queues)
 
 
@@ -287,6 +302,11 @@ async def _handle_drafts(
 
     sending_mode = getattr(client, "sending_mode", "DRAFT")
 
+    # Jeśli jest to tryb DRAFT i klient ma nałożonego bana - pomijamy zapis żeby odzyskał IMAP
+    now = time.time()
+    if sending_mode != "AUTO" and now - _client_imap_errors.get(client.id, 0) < IMAP_ERROR_COOLDOWN:
+        return False
+
     # --- DRAFT MODE: zrzuć WSZYSTKIE na raz do IMAP ---
     if sending_mode != "AUTO":
         drafts = session.query(Lead).join(Campaign).filter(
@@ -298,24 +318,37 @@ async def _handle_drafts(
             return False
 
         saved = 0
-        for draft in drafts:
+        failed = 0
+        for i, draft in enumerate(drafts):
             if is_opted_out(session, draft.target_email or ""):
                 draft.status = "BLACKLISTED"
                 session.commit()
                 continue
 
+            # Delay między draftami (nie przy pierwszym) — serwer IMAP potrzebuje oddechu
+            if i > 0:
+                await asyncio.sleep(3)
+
+            console.print(f"[cyan]   📝 [{i+1}/{len(drafts)}] Zapisuję draft: {draft.company.name} → {draft.target_email}[/cyan]")
             success, _info = await asyncio.to_thread(save_draft_via_imap, draft, client)
             if success:
                 draft.status = "SENT"
                 draft.sent_at = datetime.now(PL_TZ)
                 session.commit()
                 saved += 1
-                logger.info(f"[{client.name}] DRAFT SAVED: {draft.company.name}")
+                logger.info(f"[{client.name}] DRAFT SAVED: {draft.company.name} | {_info}")
                 if PHASE2_ENABLED:
                     queue_manager.unmark_processing(draft.id)
+            else:
+                failed += 1
+                logger.error(f"[{client.name}] ❌ DRAFT FAILED: {draft.company.name} | {_info}")
+                if any(k in str(_info) for k in ["Timeout", "socket", "timed out", "EOF", "Connection", "prób nieudanych"]):
+                    console.print(f"[bold red]⛔ {client.name}:[/bold red] Błąd IMAP (Ban/Timeout)! Przechodzę w 15m Cooldown.")
+                    _client_imap_errors[client.id] = time.time()
+                    break
 
         if saved > 0:
-            console.print(f"[green]💾 {client.name}:[/green] Zapisano {saved} draftów do IMAP")
+            console.print(f"[green]💾 {client.name}:[/green] Zapisano {saved}/{saved+failed} draftów do IMAP")
         return saved > 0
 
     # --- AUTO MODE: wyślij JEDEN mail z ludzkim delay'em ---
@@ -435,8 +468,9 @@ async def _handle_scouting(
     session: Session,
     client: Client,
     worker_id: str,
+    force: bool = False,
 ) -> bool:
-    """FAZA 2F: Szuka nowych leadów przez Google Maps (20% szans per cykl)."""
+    """FAZA 2F: Szuka nowych leadów przez Google Maps (20% szans per cykl lub 100% jeśli force=True)."""
     if PHASE2_ENABLED:
         queue_manager.register_worker(worker_id, client.id, "scouting")
 
@@ -445,7 +479,10 @@ async def _handle_scouting(
         Campaign.status == "ACTIVE",
     ).order_by(Campaign.id.desc()).first()
 
-    if not campaign or random.random() >= 0.2:
+    if not campaign:
+        return False
+        
+    if not force and random.random() >= 0.2:
         return False
 
     console.print(f"[bold red]🕵️ {client.name}:[/bold red] Sprawdzam strategię...")
@@ -549,7 +586,8 @@ async def run_client_cycle(
                 # --- FAZA 4: SCOUTING (jeśli pipeline za mały) ---
                 if need_more:
                     if not _is_still_active(): return False
-                    if await _handle_scouting(session, client, worker_id):
+                    force_scout = total_in_pipeline == 0
+                    if await _handle_scouting(session, client, worker_id, force=force_scout):
                         return True
 
             # =====================================================
@@ -577,7 +615,8 @@ async def run_client_cycle(
                 # --- Scouting (jeśli brakuje leadów na jutro) ---
                 if tomorrow_need > 0:
                     if not _is_still_active(): return False
-                    if await _handle_scouting(session, client, worker_id):
+                    force_scout = tomorrow_pipeline == 0
+                    if await _handle_scouting(session, client, worker_id, force=force_scout):
                         return True
 
             if PHASE2_ENABLED:
