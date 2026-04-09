@@ -158,15 +158,29 @@ class BackupManager:
                 process = subprocess.run(cmd, env=env, capture_output=True, text=True)
 
                 if process.returncode == 0:
-                    size_mb = dest_path.stat().st_size / (1024 * 1024)
-                    logger.info(
-                        f"✅ [BACKUP] PostgreSQL zapisany: {dest_name} ({size_mb:.1f} MB)"
-                    )
-                    self._rotate_backups()
-                    self._upload_to_gcs(dest_path)
-                    return True
+                    if dest_path.exists():
+                        size_bytes = dest_path.stat().st_size
+                        if size_bytes < 1024:
+                            logger.error(f"❌ [KATASTROFA BACKUPU] Plik {dest_name} jest pusty ({size_bytes} bajtów)! Usuwam zepsuty plik.")
+                            dest_path.unlink()
+                            return False
+                        
+                        size_mb = size_bytes / (1024 * 1024)
+                        logger.info(f"✅ [BACKUP] PostgreSQL pomyślnie zrzucony: {dest_name} ({size_mb:.2f} MB)")
+                        self._rotate_backups()
+                        
+                        # Upload do GCS uruchamia się TUTAJ - mamy pewność, że plik jest w 100% poprawny
+                        gcs_success = self._upload_to_gcs(dest_path)
+                        if not gcs_success:
+                            logger.error("❌ OSTRZEŻENIE: Backup zapisany LOKALNIE, ale nie udało się go wysłać do Google Cloud Storage!")
+                        return True
+                    else:
+                        logger.error(f"❌ [KATASTROFA BACKUPU] pg_dump zakończył się sukcesem, ale plik {dest_name} nie powstał!")
+                        return False
                 else:
-                    logger.error(f"❌ Błąd pg_dump: {process.stderr}")
+                    logger.error(f"❌ Błąd krytyczny pg_dump: {process.stderr}")
+                    if dest_path.exists():
+                        dest_path.unlink()  # Natychmiast usuwaj zepsute pliki 0-bajtowe, by nie zajmowały slotów rotacji!
                     return False
 
             else:

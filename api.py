@@ -26,10 +26,19 @@ _HEARTBEAT_TIMEOUT = 60
 _ENGINE_START_GRACE = 120
 
 # Baza danych i inne
-from app.database import SessionLocal, Client, Campaign, Lead, GlobalCompany
+from app.database import SessionLocal, Client, Campaign, Lead, GlobalCompany, Base, engine
 from sqlalchemy import func
 
 app = FastAPI(title="Nexus Engine API", description="Control API for Titan Bot Engine")
+
+@app.on_event("startup")
+def on_startup():
+    """Auto-create all database tables if they don't exist."""
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables verified/created.")
+    except Exception as e:
+        print(f"⚠️ Database init warning: {e}")
 
 # CORS setup
 app.add_middleware(
@@ -301,57 +310,63 @@ async def websocket_logs(websocket: WebSocket, token: str = Query(None)):
 
 @app.get("/api/metrics")
 def get_metrics(api_key: str = Security(get_api_key)):
-    with SessionLocal() as session:
-        c_new = session.query(Lead).filter(Lead.status == "NEW").count()
-        c_ready = session.query(Lead).filter(Lead.status == "ANALYZED").count()
-        c_draft = session.query(Lead).filter(Lead.status == "DRAFTED").count()
-        today = time.strftime('%Y-%m-%d')
-        sent_today = session.query(Lead).filter(
-            Lead.status == "SENT",
-            func.date(Lead.sent_at) == today
-        ).count()
-        
-    return {
-        "queue_new": c_new,
-        "queue_analyzed": c_ready,
-        "queue_drafted": c_draft,
-        "sent_today": sent_today
-    }
+    try:
+        with SessionLocal() as session:
+            c_new = session.query(Lead).filter(Lead.status == "NEW").count()
+            c_ready = session.query(Lead).filter(Lead.status == "ANALYZED").count()
+            c_draft = session.query(Lead).filter(Lead.status == "DRAFTED").count()
+            today = time.strftime('%Y-%m-%d')
+            sent_today = session.query(Lead).filter(
+                Lead.status == "SENT",
+                func.date(Lead.sent_at) == today
+            ).count()
+            
+        return {
+            "queue_new": c_new,
+            "queue_analyzed": c_ready,
+            "queue_drafted": c_draft,
+            "sent_today": sent_today
+        }
+    except Exception:
+        return {"queue_new": 0, "queue_analyzed": 0, "queue_drafted": 0, "sent_today": 0}
 
 
 # Per-client metrics (z warmup)
 @app.get("/api/metrics/{client_id}")
 def get_client_metrics(client_id: int, api_key: str = Security(get_api_key)):
-    from app.warmup import calculate_daily_limit
-    with SessionLocal() as session:
-        client = session.query(Client).get(client_id)
-        if not client:
-            raise HTTPException(status_code=404, detail="Brak klienta")
+    try:
+        from app.warmup import calculate_daily_limit
+        with SessionLocal() as session:
+            client = session.query(Client).get(client_id)
+            if not client:
+                raise HTTPException(status_code=404, detail="Brak klienta")
+            
+            c_new = session.query(Lead).join(Campaign).filter(Campaign.client_id == client_id, Lead.status == "NEW").count()
+            c_ready = session.query(Lead).join(Campaign).filter(Campaign.client_id == client_id, Lead.status == "ANALYZED").count()
+            c_draft = session.query(Lead).join(Campaign).filter(Campaign.client_id == client_id, Lead.status == "DRAFTED").count()
+            
+            today = time.strftime('%Y-%m-%d')
+            sent_today = session.query(Lead).join(Campaign).filter(
+                Campaign.client_id == client_id,
+                Lead.status == "SENT",
+                func.date(Lead.sent_at) == today
+            ).count()
+            
+            eff_limit = calculate_daily_limit(client)
+            target = client.daily_limit or 50
+            is_warmup = client.warmup_enabled and eff_limit < target
         
-        c_new = session.query(Lead).join(Campaign).filter(Campaign.client_id == client_id, Lead.status == "NEW").count()
-        c_ready = session.query(Lead).join(Campaign).filter(Campaign.client_id == client_id, Lead.status == "ANALYZED").count()
-        c_draft = session.query(Lead).join(Campaign).filter(Campaign.client_id == client_id, Lead.status == "DRAFTED").count()
-        
-        today = time.strftime('%Y-%m-%d')
-        sent_today = session.query(Lead).join(Campaign).filter(
-            Campaign.client_id == client_id,
-            Lead.status == "SENT",
-            func.date(Lead.sent_at) == today
-        ).count()
-        
-        eff_limit = calculate_daily_limit(client)
-        target = client.daily_limit or 50
-        is_warmup = client.warmup_enabled and eff_limit < target
-        
-    return {
-        "queue_new": c_new,
-        "queue_analyzed": c_ready,
-        "queue_drafted": c_draft,
-        "sent_today": sent_today,
-        "effective_limit": eff_limit,
-        "target_limit": target,
-        "is_warmup": is_warmup,
-    }
+        return {
+            "queue_new": c_new,
+            "queue_analyzed": c_ready,
+            "queue_drafted": c_draft,
+            "sent_today": sent_today,
+            "effective_limit": eff_limit,
+            "target_limit": target,
+            "is_warmup": is_warmup,
+        }
+    except Exception:
+        return {"queue_new": 0, "queue_analyzed": 0, "queue_drafted": 0, "sent_today": 0, "effective_limit": 0, "target_limit": 50, "is_warmup": False}
 
 
 # ==============================================================================
@@ -404,16 +419,19 @@ class ClientUpdate(BaseModel):
 
 @app.get("/api/clients")
 def get_clients(api_key: str = Security(get_api_key)):
-    with SessionLocal() as session:
-        clients = session.query(Client).all()
-        return [{
-            "id": c.id,
-            "name": c.name,
-            "status": c.status,
-            "mode": c.mode,
-            "sending_mode": c.sending_mode,
-            "leads_assigned": sum(1 for camp in c.campaigns for _ in camp.leads)
-        } for c in clients]
+    try:
+        with SessionLocal() as session:
+            clients = session.query(Client).all()
+            return [{
+                "id": c.id,
+                "name": c.name,
+                "status": c.status,
+                "mode": c.mode,
+                "sending_mode": c.sending_mode,
+                "leads_assigned": sum(1 for camp in c.campaigns for _ in camp.leads)
+            } for c in clients]
+    except Exception:
+        return []
 
 @app.get("/api/clients/{client_id}")
 def get_client(client_id: int, api_key: str = Security(get_api_key)):
