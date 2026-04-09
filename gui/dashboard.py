@@ -56,7 +56,7 @@ from app.kms_client import encrypt_credential, is_encrypted, is_kms_available
 
 # --- KONFIGURACJA UI ---
 st.set_page_config(
-    page_title="Agency OS | Titan Edition",
+    page_title="Nexus_SYSTEM",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
