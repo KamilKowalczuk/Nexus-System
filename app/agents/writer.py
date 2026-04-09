@@ -4,6 +4,7 @@ import hashlib
 import base64
 import logging
 import re
+import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,421 @@ from app.model_factory import create_llm, create_structured_llm, DEFAULT_MODEL
 
 _OPTOUT_HMAC_SECRET = os.getenv("OPTOUT_HMAC_SECRET", "").encode("utf-8")
 _SITE_URL = os.getenv("SITE_URL", "https://nexusagent.pl")
+
+# =====================================================================
+# WRITER ENGINE v5: SYSTEM RÓŻNORODNOŚCI MAILI
+# =====================================================================
+
+# Mapowanie nazw tonów z briefu (brief_sync) na klucze wewnętrzne
+_TONE_KEY_MAP: dict[str, str] = {
+    "Formalny / Korporacyjny": "formal",
+    "Profesjonalny / Partnerski": "professional",
+    "Bezpośredni / Konkretny": "direct",
+    "Techniczny / Ekspercki": "technical",
+    "formal": "formal",
+    "professional": "professional",
+    "direct": "direct",
+    "technical": "technical",
+}
+
+# Profile tonów: persona (M/F), parametry LLM
+_TONE_PROFILES: dict[str, dict] = {
+    "professional": {
+        "temperature": 0.75, "top_p": 0.85, "top_k": 40,
+        "persona_m": (
+            "Jesteś doświadczonym Business Development Managerem z 12-letnim stażem w B2B. "
+            "Twoja siła: brzmisz jak partner biznesowy, nie jak sprzedawca. Piszesz pewnie, "
+            "ale bez arogancji — jak kolega z branży, który dzieli się obserwacją.\n\n"
+            'WAŻNE: Piszesz w RODZAJU MĘSKIM. Zawsze: "widziałem", "zauważyłem", '
+            '"zastanawiałem się", "pracowałem", "rozmawiałem".'
+        ),
+        "persona_f": (
+            "Jesteś doświadczoną Business Development Managerką z 12-letnim stażem w B2B. "
+            "Twoja siła: brzmisz jak partnerka biznesowa, nie jak sprzedawczyni. Piszesz pewnie, "
+            "ale bez arogancji — jak koleżanka z branży, która dzieli się obserwacją.\n\n"
+            'WAŻNE: Piszesz w RODZAJU ŻEŃSKIM. Zawsze: "widziałam", "zauważyłam", '
+            '"zastanawiałam się", "pracowałam", "rozmawiałam". NIGDY nie używaj rodzaju męskiego.'
+        ),
+    },
+    "formal": {
+        "temperature": 0.60, "top_p": 0.80, "top_k": 35,
+        "persona_m": (
+            "Jesteś Senior Consultantem z wieloletnią praktyką doradczą. Piszesz oficjalnie, "
+            "z dystansem i szacunkiem — jak korespondencja z dużej firmy doradczej. "
+            'Zwracasz się per "Państwo", utrzymujesz formalny rejestr języka.\n\n'
+            'WAŻNE: Piszesz w RODZAJU MĘSKIM. Zawsze: "zwróciłem uwagę", '
+            '"przeprowadziłem analizę". NIE używaj "pozwolę sobie" (zakazany zwrot AI).'
+        ),
+        "persona_f": (
+            "Jesteś Senior Consultantką z wieloletnią praktyką doradczą. Piszesz oficjalnie, "
+            "z dystansem i szacunkiem — jak korespondencja z dużej firmy doradczej. "
+            'Zwracasz się per "Państwo", utrzymujesz formalny rejestr języka.\n\n'
+            'WAŻNE: Piszesz w RODZAJU ŻEŃSKIM. Zawsze: "zwróciłam uwagę", '
+            '"przeprowadziłam analizę". NIE używaj "pozwolę sobie" (zakazany zwrot AI).'
+        ),
+    },
+    "direct": {
+        "temperature": 0.65, "top_p": 0.80, "top_k": 35,
+        "persona_m": (
+            "Jesteś praktykiem-przedsiębiorcą. Zero bull***t approach. Piszesz ultrakrótko — "
+            "każde słowo waży. Bez ozdobników, bez wstępów, bez grzeczności ponad minimum. "
+            "Idziesz prosto do sedna.\n\n"
+            'WAŻNE: Piszesz w RODZAJU MĘSKIM. Zawsze: "widziałem", "sprawdziłem", "szukam".'
+        ),
+        "persona_f": (
+            "Jesteś praktyczką-przedsiębiorczynią. Zero bull***t approach. Piszesz ultrakrótko — "
+            "każde słowo waży. Bez ozdobników, bez wstępów, bez grzeczności ponad minimum. "
+            "Idziesz prosto do sedna.\n\n"
+            'WAŻNE: Piszesz w RODZAJU ŻEŃSKIM. Zawsze: "widziałam", "sprawdziłam", "szukam".'
+        ),
+    },
+    "technical": {
+        "temperature": 0.55, "top_p": 0.75, "top_k": 30,
+        "persona_m": (
+            "Jesteś inżynierem/analitykiem z głęboką wiedzą branżową. Myślisz danymi i procesami. "
+            "Piszesz rzeczowo, z terminologią branżową — jak ekspert do eksperta. "
+            "Powołujesz się WYŁĄCZNIE na fakty z danych, nigdy nie zmyślasz metryk.\n\n"
+            'WAŻNE: Piszesz w RODZAJU MĘSKIM. Zawsze: "przeanalizowałem", "zidentyfikowałem", "zmapowałem".'
+        ),
+        "persona_f": (
+            "Jesteś inżynierką/analityczką z głęboką wiedzą branżową. Myślisz danymi i procesami. "
+            "Piszesz rzeczowo, z terminologią branżową — jak ekspertka do eksperta. "
+            "Powołujesz się WYŁĄCZNIE na fakty z danych, nigdy nie zmyślasz metryk.\n\n"
+            'WAŻNE: Piszesz w RODZAJU ŻEŃSKIM. Zawsze: "przeanalizowałam", "zidentyfikowałam", "zmapowałam".'
+        ),
+    },
+}
+
+# 6 architektur otwarcia cold maila (SALES step==1)
+_OPENING_STRATEGIES_COLD: list[dict] = [
+    {
+        "id": "diagnostic_question",
+        "name": "Pytanie Diagnostyczne",
+        "instruction": (
+            '3. Pytanie prowadzące — zacznij od pytania o konkretny proces/wyzwanie u odbiorcy, '
+            'potem daj 1 zdanie kontekstu dlaczego pytasz.\n'
+            '   Struktura: "Jak wygląda u Państwa [proces z danych]? Pytam, bo [kontekst z doświadczenia]."\n'
+            '   WAŻNE: Pytanie MUSI dotyczyć aspektu widocznego w danych odbiorcy.'
+        ),
+    },
+    {
+        "id": "micro_observation",
+        "name": "Mikro-Obserwacja",
+        "instruction": (
+            '3. Mikro-obserwacja — opisz JEDEN konkretny fakt ze strony odbiorcy i JEDNĄ implikację '
+            'łączącą się z ofertą nadawcy.\n'
+            '   Struktura: "[Fakt ze strony]. W podobnych strukturach to zwykle sygnalizuje [implikacja]."\n'
+            '   WAŻNE: Fakt MUSI być z danych researchu, implikacja z doświadczenia nadawcy.'
+        ),
+    },
+    {
+        "id": "inverted_perspective",
+        "name": "Odwrócona Perspektywa",
+        "instruction": (
+            '3. Odwrócona perspektywa — pokaż kontrast między dwoma podejściami do problemu '
+            'w branży odbiorcy. Nie mów które lepsze — zapytaj jak oni to robią.\n'
+            '   Struktura: "Firmy w [segment] podchodzą do [temat] na dwa sposoby: [A] lub [B]. '
+            'Ciekawi mnie, jak to wygląda u Państwa."\n'
+            '   WAŻNE: Oba podejścia muszą być realistyczne.'
+        ),
+    },
+    {
+        "id": "pain_point_bridge",
+        "name": "Punkt Bólu z Danych",
+        "instruction": (
+            '3. Most od pain pointu — weź konkretny pain point z researchu i połącz '
+            'z jednym zdaniem kontekstu. Nie obiecuj rozwiązania.\n'
+            '   Struktura: "[Pain point z danych]. Z naszych obserwacji — to area, '
+            'która przy [skala] zaczyna wymagać uwagi."\n'
+            '   WAŻNE: Pain point MUSI być z sekcji Możliwe potrzeby. Zero wymysłów.'
+        ),
+    },
+    {
+        "id": "market_signal",
+        "name": "Sygnał Rynkowy",
+        "instruction": (
+            '3. Sygnał rynkowy — opisz trend w segmencie odbiorcy i zapytaj '
+            'czy to temat na ich agendzie.\n'
+            '   Struktura: "Obserwujemy, że [segment] coraz częściej weryfikuje [temat]. '
+            'Ciekawi mnie, czy to temat, na który zwracacie uwagę."\n'
+            '   WAŻNE: Trend musi logicznie wynikać z danych o branży odbiorcy.'
+        ),
+    },
+    {
+        "id": "intellectual_provocation",
+        "name": "Prowokacja Intelektualna",
+        "instruction": (
+            '3. Prowokacja intelektualna — postaw lekko kontrowersyjną tezę '
+            'dotyczącą branży i zapytaj o ich zdanie.\n'
+            '   Struktura: "Pojawia się teza, że [obserwacja o branży]. '
+            'Ciekawi mnie Państwa perspektywa — jak to wygląda od wewnątrz?"\n'
+            '   WAŻNE: Teza musi być merytoryczna i powiązana z ofertą nadawcy.'
+        ),
+    },
+]
+
+# 4 architektury follow-up (SALES step > 1)
+_OPENING_STRATEGIES_FOLLOWUP: list[dict] = [
+    {
+        "id": "new_angle",
+        "name": "Nowy Kąt",
+        "instruction": (
+            '2-3. Nowy argument — wróć z INNYM aspektem problemu niż wcześniej. '
+            'Dodaj jedną nową obserwację.\n'
+            '   Struktura: "{_wracam} z jedną myślą — {_zastawialem} nad [NOWY aspekt] i [obserwacja]."\n'
+            '   WAŻNE: NIE powtarzaj argumentów z poprzednich maili.'
+        ),
+    },
+    {
+        "id": "perspective_shift",
+        "name": "Zmiana Perspektywy",
+        "instruction": (
+            '2-3. Zmiana perspektywy — pokaż problem z innej strony niż wcześniej. '
+            'Np. jeśli wcześniej o procesach, teraz o zespole.\n'
+            '   Struktura: "Patrząc na to z innej strony — [nowa perspektywa na temat]."\n'
+            '   WAŻNE: Musi być widoczna jasna różnica kąta patrzenia vs. poprzedni mail.'
+        ),
+    },
+    {
+        "id": "trend_reference",
+        "name": "Odwołanie do Trendu",
+        "instruction": (
+            '2-3. Odwołanie do trendu — nawiąż do zmiany rynkowej lub technologicznej '
+            'w branży odbiorcy.\n'
+            '   Struktura: "{_wracam} do tematu z kontekstem [trend]. '
+            'Zaczynamy obserwować wpływ na [aspekt]."\n'
+            '   WAŻNE: Trend MUSI być powiązany z branżą odbiorcy i ofertą nadawcy.'
+        ),
+    },
+    {
+        "id": "deepening_question",
+        "name": "Pytanie Pogłębiające",
+        "instruction": (
+            '2-3. Pytanie pogłębiające — zadaj INNE pytanie niż wcześniej, '
+            'bardziej szczegółowe i bliższe konkretnemu procesowi.\n'
+            '   Struktura: "{_zastawialem} nad jedną rzeczą — [konkretne pytanie o proces]?"\n'
+            '   WAŻNE: Pytanie musi być bardziej precyzyjne niż w pierwszym mailu.'
+        ),
+    },
+]
+
+
+# --- PULA PRZYKŁADÓW FEW-SHOT (3 per ton, indeksowane kluczem tonu) ---
+_FEW_SHOT_POOL: dict[str, list[dict]] = {
+    "professional": [
+        {
+            "label": "z icebreakerem, partnerski",
+            "subject": "automatyzacja procesów",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>{_widzialem} że rozbudowujecie zespół sprzedaży — trzy nowe oferty "
+                "na LinkedIn w tym miesiącu. To zwykle moment, kiedy ręczne prowadzenie "
+                "pipeline'u zaczyna hamować skalowanie.</p>"
+                "<p>Pracując z firmami o podobnej dynamice wzrostu, widzieliśmy wyraźny "
+                "wzorzec — automatyzacja dopływu leadów eliminuje bottleneck po stronie "
+                "handlowców.</p>"
+                "<p>Czy to temat, który jest teraz na Waszej agendzie?</p>"
+            ),
+        },
+        {
+            "label": "bez icebrakera, obserwacja branżowa",
+            "subject": "kwestia segmentacji",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>Analizując rynek firm technologicznych z Waszego segmentu, zwróciło "
+                "moją uwagę Wasze pozycjonowanie w obszarze ERP.</p>"
+                "<p>Firmy o zbliżonym profilu coraz częściej sygnalizują, że manualny "
+                "prospecting pochłania czas, który mógłby iść w rozwój produktu. "
+                "Ciekawi mnie, czy to obserwacja bliska też Waszej codzienności?</p>"
+            ),
+        },
+        {
+            "label": "follow-up, nowy argument",
+            "subject": "Re: kwestia segmentacji",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>{_wracam} z jedną myślą — {_zastawialem} nad rynkiem ERP i okazało "
+                "się, że największym wyzwaniem nie bywa brak danych, a brak ich selekcji.</p>"
+                "<p>Chętnie opowiem przy krótkiej rozmowie, jak podchodzimy do tego "
+                "tematu. Czy to coś, o czym warto porozmawiać?</p>"
+            ),
+        },
+    ],
+    "formal": [
+        {
+            "label": "z icebreakerem, formalny",
+            "subject": "kwestia procesów rekrutacyjnych",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>Zwróciłem uwagę na intensywną rekrutację w Państwa organizacji — "
+                "kilka otwartych procesów w obszarze IT w ostatnich tygodniach. Skala "
+                "zatrudnień na tym poziomie generuje zazwyczaj istotne wyzwania "
+                "administracyjne.</p>"
+                "<p>Prowadząc analizę porównawczą w tym segmencie, zidentyfikowaliśmy "
+                "powtarzalny wzorzec w obszarze automatyzacji tych procesów. Czy byliby "
+                "Państwo otwarci na krótką wymianę obserwacji?</p>"
+            ),
+        },
+        {
+            "label": "bez icebrakera, analiza",
+            "subject": "pytanie odnośnie infrastruktury",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>Analizując podmioty o zbliżonym profilu działalności w Państwa "
+                "segmencie rynku, zwróciłem uwagę na Państwa pozycjonowanie w obszarze "
+                "usług profesjonalnych.</p>"
+                "<p>Według naszych obserwacji, organizacje o tej strukturze coraz "
+                "częściej raportują potrzebę weryfikacji procesów w zakresie pozyskiwania "
+                "nowych kontraktów. Czy to obszar, który jest obecnie przedmiotem "
+                "Państwa uwagi?</p>"
+            ),
+        },
+        {
+            "label": "follow-up, formalny",
+            "subject": "Re: pytanie odnośnie infrastruktury",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>Nawiązując do poprzedniej korespondencji — {_zastawialem} nad "
+                "dodatkowym aspektem. Z perspektywy naszej praktyki, kluczowym elementem "
+                "bywa nie sam proces, a jego skalowalność przy wzroście obciążenia.</p>"
+                "<p>Byliby Państwo skłonni poświęcić 15 minut na krótką rozmowę "
+                "w tym temacie?</p>"
+            ),
+        },
+    ],
+    "direct": [
+        {
+            "label": "z icebreakerem, bezpośredni",
+            "subject": "szybkie pytanie",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>{_widzialem} nowe oferty pracy u Was. Rosnący zespół = rosnący "
+                "chaos w procesach. Standardowa pułapka.</p>"
+                "<p>Macie to ogarnięte, czy szukacie sposobu na usprawnienie?</p>"
+            ),
+        },
+        {
+            "label": "bez icebrakera, bezpośredni",
+            "subject": "jeden temat",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>Firmy z Waszego segmentu tracą średnio kilkanaście godzin tygodniowo "
+                "na manualny prospecting. To czas, który mógłby iść w domykanie dealów.</p>"
+                "<p>Weryfikujecie ten obszar?</p>"
+            ),
+        },
+        {
+            "label": "follow-up, bezpośredni",
+            "subject": "Re: jeden temat",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>{_wracam} krótko. Jeden dodatkowy kontekst — firmy o Waszym profilu, "
+                "z którymi rozmawialiśmy, najczęściej wskazują na selekcję leadów "
+                "jako bottleneck nr 1.</p>"
+                "<p>Warto porozmawiać?</p>"
+            ),
+        },
+    ],
+    "technical": [
+        {
+            "label": "z icebreakerem, techniczny",
+            "subject": "integracja pipeline'u",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>{_widzialem} że pracujecie na stacku obejmującym systemy ERP. "
+                "Przy tej architekturze, integracja danych prospectingowych z CRM-em "
+                "staje się wąskim gardłem — szczególnie przy wolumenie powyżej "
+                "50 leadów dziennie.</p>"
+                "<p>Czy walidacja danych wejściowych do Waszego pipeline'u to temat, "
+                "który obecnie analizujecie?</p>"
+            ),
+        },
+        {
+            "label": "bez icebrakera, techniczny",
+            "subject": "architektura procesu",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>Mapując procesy w firmach z segmentu usług technologicznych, "
+                "identyfikujemy powtarzalny wzorzec — manualna kwalifikacja leadów "
+                "przy skali 30+ kontaktów dziennie generuje error rate na poziomie, "
+                "który wpływa na conversion rate dalszych etapów.</p>"
+                "<p>Czy monitorujecie ten wskaźnik w Państwa procesie?</p>"
+            ),
+        },
+        {
+            "label": "follow-up, techniczny",
+            "subject": "Re: architektura procesu",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>{_wracam} z dodatkowym punktem danych — {_zastawialem} nad metryką "
+                "time-to-first-contact w Waszym segmencie. Z naszych benchmarków wynika, "
+                "że skrócenie tego czasu o 40%% koreluje z wyraźnym wzrostem "
+                "response rate.</p>"
+                "<p>Czy mierzycie ten parametr u siebie?</p>"
+            ),
+        },
+    ],
+}
+
+
+# =====================================================================
+# HELPER FUNCTIONS — WRITER ENGINE v5
+# =====================================================================
+
+def _resolve_tone_key(tone_of_voice: str | None) -> str:
+    """Rozwiązuje tone_of_voice z briefu klienta na klucz wewnętrzny."""
+    if not tone_of_voice or not tone_of_voice.strip():
+        return "professional"
+    return _TONE_KEY_MAP.get(tone_of_voice.strip(), "professional")
+
+
+def _build_persona(tone_key: str, sender_gender: str) -> str:
+    """Buduje blok persony dopasowany do tonu i płci sendera."""
+    profile = _TONE_PROFILES.get(tone_key, _TONE_PROFILES["professional"])
+    gender_key = "persona_f" if sender_gender == "F" else "persona_m"
+    return profile[gender_key]
+
+
+def _select_opening_strategy(step: int, previous_emails: list | None) -> dict:
+    """
+    Losuje architekturę otwarcia z puli odpowiedniej dla stepu.
+    Cold (step==1): 6 architektur. Follow-up (step>1): 4 architektury.
+    """
+    pool = list(_OPENING_STRATEGIES_FOLLOWUP) if step > 1 else list(_OPENING_STRATEGIES_COLD)
+    return random.choice(pool)
+
+
+def _select_few_shots(tone_key: str, sender_gender: str, count: int = 2) -> str:
+    """
+    Losuje przykłady few-shot z puli danego tonu.
+    Formatuje formy gramatyczne (M/F) w treści przykładów.
+    """
+    pool = _FEW_SHOT_POOL.get(tone_key, _FEW_SHOT_POOL["professional"])
+    selected = random.sample(pool, min(count, len(pool)))
+
+    if sender_gender == "F":
+        forms = {
+            "{_widzialem}": "Widziałam",
+            "{_zauwazyl}": "Zauważyłam",
+            "{_zastawialem}": "Zastanawiałam się",
+            "{_wracam}": "Wracam",
+        }
+    else:
+        forms = {
+            "{_widzialem}": "Widziałem",
+            "{_zauwazyl}": "Zauważyłem",
+            "{_zastawialem}": "Zastanawiałem się",
+            "{_wracam}": "Wracam",
+        }
+
+    examples_text = "=== PRZYKŁADY DOBREGO STYLU ===\n\n"
+    for i, ex in enumerate(selected, 1):
+        body = ex["body"]
+        for placeholder, val in forms.items():
+            body = body.replace(placeholder, val)
+        examples_text += f"Przykład {i} ({ex['label']}):\nSubject: {ex['subject']}\nBody:\n{body}\n\n"
+
+    return examples_text
 
 
 def _build_optout_url(email: str, base_url: str) -> str:
@@ -279,7 +695,8 @@ def _generate_email_sync(session: Session, lead_id: int):
     # --- 3. SENDER / FOOTER / PŁEĆ ---
     sender_name = client.sender_name or None
     sender_gender = _detect_gender(sender_name)
-    logger.info(f"   👤 Sender: {sender_name or '(brak)'} | Płeć: {'K' if sender_gender == 'F' else 'M'} | Footer: {'TAK' if client.html_footer else 'NIE'}")
+    tone_key = _resolve_tone_key(getattr(client, "tone_of_voice", None))
+    logger.info(f"   👤 Sender: {sender_name or '(brak)'} | Płeć: {'K' if sender_gender == 'F' else 'M'} | Ton: {tone_key} | Footer: {'TAK' if client.html_footer else 'NIE'}")
 
     # --- 3b. HISTORIA POPRZEDNICH MAILI (dla follow-upów) ---
     previous_emails = []
@@ -312,6 +729,7 @@ def _generate_email_sync(session: Session, lead_id: int):
             previous_emails=previous_emails,
             writer_model=writer_model,
             sender_gender=sender_gender,
+            tone_key=tone_key,
         )
     except Exception as e:
         logger.error(f"❌ Writer error ({writer_model}): {e}")
@@ -349,6 +767,7 @@ def _generate_email_sync(session: Session, lead_id: int):
                     previous_emails=previous_emails,
                     writer_model=DEFAULT_MODEL,
                     sender_gender=sender_gender,
+                    tone_key=tone_key,
                 )
                 logger.info(f"   ✅ FALLBACK OK — wygenerowano na {DEFAULT_MODEL}")
             except Exception as fallback_err:
@@ -382,6 +801,7 @@ def _generate_email_sync(session: Session, lead_id: int):
             strict_mode=True,
             writer_model=writer_model,
             sender_gender=sender_gender,
+            tone_key=tone_key,
         )
         safe_body = _sanitize_and_validate_html(draft.body)
         validation = _validate_against_data(safe_body, {}, {})
@@ -441,10 +861,11 @@ def _call_writer(
     strict_mode=False,
     writer_model: str = DEFAULT_MODEL,
     sender_gender: str = "M",
+    tone_key: str = "professional",
 ):
     """
-    ENGINE v4: Silnik generujący treść maila.
-    Prompt-engineered pod Gemini 3.1 Pro — few-shot, persona, concrete anti-patterns.
+    ENGINE v5: Silnik generujący treść maila z systemem różnorodności.
+    Dynamiczna persona, architektura otwarcia i few-shot per ton głosu klienta.
     """
     uvp = client.value_proposition or ""
     cases = client.case_studies or ""
@@ -549,55 +970,39 @@ Schemat:
 3. Dodaj NOWĄ wartość — inna umiejętność, obserwacja, pytanie
 4. Miękkie CTA"""
     else:  # SALES
+        # ENGINE v5: Dynamiczny wybór architektury otwarcia
+        strategy = _select_opening_strategy(step, previous_emails)
+        strategy_instruction = strategy["instruction"]
+        # Format gender forms in follow-up strategy templates
+        strategy_instruction = strategy_instruction.replace("{_wracam}", _wracam)
+        strategy_instruction = strategy_instruction.replace("{_zastawialem}", _zastawialem)
+        logger.info(f"   🎯 Strategia: {strategy['name']} ({strategy['id']})")
+
         if step == 1:
             task_block = f"""ZADANIE: Pierwszy cold email (zapytanie analityczne).
 
 Schemat:
 1. Powitanie
 2. Hook — jedno zdanie oparte na icebreaker/researchu. Pokaż że analizujesz ich branżę.
-3. Obserwacja trendu (nie oferta) — 1-2 zdania. LOSOWO wybierz JEDEN z poniższych kątów wejścia (Matryca Rotacyjna). Każdy mail musi używać INNEJ ramy niż pozostałe:
-
-   RAMA 1 (Hipoteza Badawcza): "Z mojego doświadczenia wynika hipoteza, że przy tej skali działalności [PROBLEM] zaczyna obciążać administrację. Czy to zjawisko występuje również u Państwa?"
-   RAMA 2 (Analiza Trendu): "Obserwując ten segment rynku, mapujemy powtarzający się trend: [PROBLEM]. Czy to obszar, który obecnie weryfikujecie?"
-   RAMA 3 (Korelacja Skali): "Zauważyliśmy pewną korelację — rozwój takich struktur często odsłania luki w [PROBLEM]. Czy bylibyście Państwo otwarci na krótką dyskusję, jak to wygląda u Was?"
-   RAMA 4 (Audyt Zewnętrzny): "Analizując procesy podobnych podmiotów, identyfikujemy nieszczelności na etapie [PROBLEM]. Czy weryfikacja tego obszaru to coś, co mogłoby Was teraz zainteresować?"
-   RAMA 5 (Sygnalizacja Rynkowa): "Według naszych obserwacji, firmy o zbliżonej strukturze coraz częściej raportują wyzwania w zakresie [PROBLEM]. Ciekawi mnie, czy to temat, na który zwracacie obecnie uwagę."
-   RAMA 6 (Benchmark Branżowy): "Prowadząc analizę porównawczą w tym segmencie, trafiliśmy na powtarzalny wzorzec dotyczący [PROBLEM]. Bylibyście skłonni do krótkiej wymiany spostrzeżeń?"
-   RAMA 7 (Pytanie Diagnostyczne): "Pracując z branżą, często słyszymy o wyzwaniach związanych z [PROBLEM]. Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
-   RAMA 8 (Obserwacja Strategiczna): "Przyglądając się obecnej dynamice tego rynku, [PROBLEM] wydaje się jednym z kluczowych punktów strategicznych. Czy poruszacie ten temat wewnętrznie?"
-
-   Zastąp [PROBLEM] konkretnym wyzwaniem z danych o odbiorcy.
-   NIGDY nie używaj dwóch tych samych ram w dwóch kolejnych wiadomościach.
-   NIGDY nie stosuj sformułowania "Współpracując z podobnymi..." — to zakazana fraza.
-
+{strategy_instruction}
 4. Zapytanie (CTA) — czyste pytanie o otwartość na rozmowę.
 WAŻNE: Zakaz używania stwierdzeń "robimy to", "pomagamy w", "nasza oferta to".
+NIGDY nie stosuj sformułowania "Współpracując z podobnymi..." — to zakazana fraza.
 (Bez podpisu — doklejany automatycznie)"""
         else:
             task_block = f"""ZADANIE: Follow-up nr {step} (podtrzymanie zapytania analitycznego).
 
 Schemat:
 1. Powitanie
-2. Nawiązanie ("{_wracam} z jedną myślą" / "{_zastawialem} nad czymś")
-3. NOWY argument analityczny — użyj INNEJ ramy z Matrycy Rotacyjnej niż w poprzednim mailu. Możesz też użyć:
-   - Nowej obserwacji z rynku lub statystyki
-   - Pytania diagnostycznego o inny aspekt ich działalności
-   - Odwołania do zmiany regulacyjnej lub trendu branżowego
-4. Lekkie CTA ("Dajcie znać czy weryfikacja tego obszaru to w ogóle u Was temat")
+{strategy_instruction}
+4. Lekkie CTA (pytanie o otwartość na rozmowę)
 WAŻNE: Zakaz używania stwierdzeń "robimy to", "pomagamy w", "nasza oferta to".
-WAŻNE: NIGDY nie powtórz ramy/frazy z poprzedniego maila.
+WAŻNE: NIGDY nie powtórz argumentu/frazy z poprzedniego maila.
 (Bez podpisu — doklejany automatycznie)"""
 
     # --- SYSTEM PROMPT: PERSONA + REGUŁY + PRZYKŁADY ---
-    # Dynamiczna persona na podstawie płci sendera
-    if sender_gender == "F":
-        persona = f"""Jesteś doświadczoną handlowczyni B2B z 12-letnim stażem. Piszesz cold maile, które ludzie CZYTAJĄ i na które ODPOWIADAJĄ. Twoja siła: brzmisz jak normalna kobieta, nie jak bot ani korporacja.
-
-WAŻNE: Piszesz w RODZAJU ŻEŃSKIM. Zawsze: "widziałam", "zauważyłam", "zastanawiałam się", "pracowałam", "rozmawiałam". NIGDY nie używaj rodzaju męskiego."""
-    else:
-        persona = f"""Jesteś doświadczonym handlowcem B2B z 12-letnim stażem. Piszesz cold maile, które ludzie CZYTAJĄ i na które ODPOWIADAJĄ. Twoja siła: brzmisz jak normalny człowiek, nie jak bot ani korporacja.
-
-WAŻNE: Piszesz w RODZAJU MĘSKIM. Zawsze: "widziałem", "zauważyłem", "zastanawiałem się", "pracowałem", "rozmawiałem"."""
+    # ENGINE v5: Persona dynamiczna per ton głosu
+    persona = _build_persona(tone_key, sender_gender)
 
     tone_of_voice_rule = ""
     if tone_of_voice:
@@ -671,30 +1076,7 @@ wszelkie liczby/procenty/statystyki których NIE MA w danych powyżej
 - "Chciałbym się umówić na" / "Może znajdziemy czas na"
 - Więcej niż jedno pytanie w CTA
 
-=== PRZYKŁADY DOBREGO STYLU ===
-
-Przykład 1 (z icebreakerem):
-Subject: automatyzacja procesów
-Body:
-<p>Dzień dobry,</p>
-<p>{_widzialem} że rozbudowujecie zespół sprzedaży — trzy nowe oferty na LinkedIn w tym miesiącu. To zwykle moment, kiedy ręczne poszukiwanie procesów i budowa pipeline zaczynaja hamować skalowanie.</p>
-<p>Współpracując z podmiotami o podobnej dynamice wzrostu, zauważyliśmy wyraźny wzorzec: automatyzacja dopływu leada eliminuje bottleneck cold callingu po stronie handlowców.</p>
-<p>Czy bylibyście otwarci na krótką rozmowę, aby zweryfikować, czy nasze mechanizmy mogłyby usprawnić Wasz proces?</p>
-
-Przykład 2 (bez icebrakera):
-Subject: optymalizacja dla ERP
-Body:
-<p>Dzień dobry,</p>
-<p>Analizując rynek firm IT wdrażających systemy B2B w Polsce, zwróciło moją uwagę Wasze osadzenie w segmencie ERP dla produkcji.</p>
-<p>Nasz zespół analityczny zauważył, że dostarczanie zweryfikowanych zestawów kontaktów z konkretnych branż pozwala inżynierom zaoszczędzić około 15 godzin tygodniowo przeznaczanych w innej formie na manualny prospecting.</p>
-<p>Czy rozważali Państwo weryfikację gotowych przepływów danych pod kątem optymalizacji waszych cykli poszukiwania kontraktów?</p>
-
-Przykład 3 (follow-up):
-Subject: Re: optymalizacja dla ERP
-Body:
-<p>Dzień dobry,</p>
-<p>{_wracam} z jedną myślą — {_zastawialem.lower()} ostatnio nad rynkiem ERP i okazało się, z doświadczeń podobnych podmiotów, że największym problemem nie bywa brak danych analitycznych, ale brak tych wyselekcjonowanych.</p>
-<p>Chętnie zaprezentuję na niezobowiązującym spotkaniu, w jakim stopniu nasze filtry mogłyby wesprzeć Państwa segmentację rynku.</p>
+{_select_few_shots(tone_key, sender_gender)}
 
 === TWÓJ WEWNĘTRZNY PROCES (nie pisz tego w mailu) ===
 1. Przeczytaj dane o odbiorcy. Co WIEM na pewno?
@@ -715,7 +1097,9 @@ TRYB ŚCISŁY — dodatkowe ograniczenia:
     if feedback:
         user_message += f"\n\nPoprawki od klienta: {feedback}"
 
-    writer_llm = create_structured_llm(writer_model, EmailDraft, temperature=0.72, top_p=0.85, top_k=40)
+    # ENGINE v5: Dynamiczne parametry LLM per ton głosu
+    _tp = _TONE_PROFILES.get(tone_key, _TONE_PROFILES["professional"])
+    writer_llm = create_structured_llm(writer_model, EmailDraft, temperature=_tp["temperature"], top_p=_tp["top_p"], top_k=_tp["top_k"])
 
     return writer_llm.invoke([
         SystemMessage(content=system_prompt),
