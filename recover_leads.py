@@ -218,7 +218,7 @@ def recover_for_client(session: Session, client: Client):
                 company = GlobalCompany(
                     domain=domain,
                     name=domain.split(".")[0].capitalize(),
-                    first_seen_at=sent_at or datetime.now(PL_TZ)
+                    last_scraped_at=sent_at or datetime.now(PL_TZ),
                 )
                 session.add(company)
                 session.flush()
