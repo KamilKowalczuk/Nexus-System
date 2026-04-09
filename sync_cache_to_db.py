@@ -19,40 +19,50 @@ def sync():
     
     try:
         for key in keys:
-            data = redis_client.get_json(key)
-            if not data or 'domain' not in data:
-                continue
-            
-            domain = data['domain'].lower().strip()
-            
-            # 2. Sprawdź czy firma już jest w bazie Postgres
-            exists = session.query(GlobalCompany).filter_by(domain=domain).first()
-            if exists:
+            try:
+                data = redis_client.get_json(key)
+                if not data or 'domain' not in data:
+                    continue
+                
+                domain = data['domain'].lower().strip()
+                
+                # 2. Sprawdź czy firma już jest w bazie Postgres
+                exists = session.query(GlobalCompany).filter_by(domain=domain).first()
+                if exists:
+                    skipped += 1
+                    continue
+                
+                # 3. Mapowanie danych z cache do modelu DB
+                scraped_at = datetime.now()
+                if 'scraped_at' in data:
+                    try:
+                        scraped_at = datetime.fromisoformat(data['scraped_at'].replace('Z', '+00:00'))
+                    except:
+                        pass
+
+                new_company = GlobalCompany(
+                    domain=domain,
+                    name=data.get('name', domain),
+                    tech_stack=data.get('tech_stack', []),
+                    decision_makers=data.get('decision_makers', []),
+                    pain_points=data.get('pain_points', []),
+                    hiring_status=data.get('hiring_status'),
+                    is_active=True,
+                    has_mx_records=data.get('has_mx_records', False),
+                    last_scraped_at=scraped_at,
+                    quality_score=data.get('quality_score', 0)
+                )
+                
+                session.add(new_company)
+                added += 1
+                
+                if added % 20 == 0:
+                    session.commit()
+                    logger.info(f"📥 Zsynchronizowano... (+{added})")
+            except Exception as e:
+                logger.warning(f"⚠️ Pominięto klucz {key} z powodu błędu: {e}")
+                session.rollback()
                 skipped += 1
-                continue
-            
-            # 3. Mapowanie danych z cache do modelu DB
-            # Redis cache przechowuje rozszerzony format Firecrawl
-            new_company = GlobalCompany(
-                domain=domain,
-                name=data.get('name', domain),
-                tech_stack=data.get('tech_stack', []),
-                decision_makers=data.get('decision_makers', []),
-                pain_points=data.get('pain_points', []),
-                hiring_status=data.get('hiring_status'),
-                is_active=True,
-                has_mx_records=data.get('has_mx_records', False),
-                last_scraped_at=datetime.fromisoformat(data['scraped_at']) if 'scraped_at' in data else datetime.now(),
-                quality_score=data.get('quality_score', 0)
-            )
-            
-            session.add(new_company)
-            added += 1
-            
-            # Commit co 20 rekordów dla wydajności
-            if added % 20 == 0:
-                session.commit()
-                logger.info(f"📥 Zsynchronizowano... (+{added})")
 
         session.commit()
         logger.info(f"✅ SYNCHRONIZACJA ZAKOŃCZONA: Dodano nowych firm: {added}, Pominięto (już były): {skipped}")
