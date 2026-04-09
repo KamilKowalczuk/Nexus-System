@@ -35,7 +35,7 @@ services:
     networks:
       - agency_net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -58,10 +58,10 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8501:8501"
-      - "127.0.0.1:8000:8000"
+      - "8501:8501"
+      - "8000:8000"
     volumes:
-      - ./files:/app/files          # pliki, załączniki, backupy (backup_manager pisze tu)
+      - ./files:/app/files # pliki, załączniki, backupy (backup_manager pisze tu)
     networks:
       - agency_net
 
