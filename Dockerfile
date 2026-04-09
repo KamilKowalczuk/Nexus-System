@@ -22,4 +22,4 @@ COPY . .
 
 # Uruchamiamy TYLKO dashboard — silnik main.py startowany z GUI przyciskiem "URUCHOM"
 # Uruchamianie main.py bezpośrednio z CMD powoduje duplikację procesu (drugi start z GUI).
-CMD ["uv", "run", "streamlit", "run", "gui/dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["./start.sh"]

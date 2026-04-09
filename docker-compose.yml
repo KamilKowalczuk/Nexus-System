@@ -59,6 +59,7 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8501:8501"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./files:/app/files          # pliki, załączniki, backupy (backup_manager pisze tu)
     networks:
