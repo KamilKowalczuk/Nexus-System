@@ -231,12 +231,8 @@ def get_range_stats(session: Session, client_id: int, from_date: date, to_date: 
     ]
 
 
-def get_all_time_totals(session: Session, client_id: int) -> dict:
-    """
-    Zwraca sumy ALL-TIME dla danego klienta.
-    Payload CMS używa tego do raportów sumarycznych.
-    """
-    sql = text("""
+    where_clause = "WHERE client_id = :client_id" if client_id != 0 else ""
+    sql = text(f"""
         SELECT
             COALESCE(SUM(domains_scanned), 0) AS domains_scanned,
             COALESCE(SUM(domains_approved), 0) AS domains_approved,
@@ -266,7 +262,7 @@ def get_all_time_totals(session: Session, client_id: int) -> dict:
                  THEN ROUND((SUM(replies_positive)::numeric / SUM(replies_total)) * 100, 2)
                  ELSE 0 END AS positive_rate
         FROM campaign_statistics
-        WHERE client_id = :client_id
+        {where_clause}
     """)
     
     result = session.execute(sql, {"client_id": client_id}).mappings().first()

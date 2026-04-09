@@ -9,6 +9,7 @@ import subprocess
 import time
 import asyncio
 import decimal
+import logging
 from typing import Dict, Any, List, Optional
 
 from fastapi import Security, HTTPException, status, Query
@@ -25,6 +26,34 @@ HEARTBEAT_FILE = os.path.join(ROOT_DIR, 'engine.heartbeat')
 _HEARTBEAT_TIMEOUT = 60
 _ENGINE_START_GRACE = 120
 
+# ---------------------------------------------------------------------------
+# LOGGING — produkcyjne logi aplikacji + wyciszenie health-check spamu
+# ---------------------------------------------------------------------------
+
+# Filtr wyciszający powtarzalne endpointy pollingowe z access logów uvicorn
+class HealthCheckFilter(logging.Filter):
+    """Filtruje logi GET /api/metrics i /api/engine/status — polling co sekundę."""
+    _SUPPRESSED_PATHS = ("/api/metrics", "/api/engine/status")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(path in msg for path in self._SUPPRESSED_PATHS)
+
+# Aplikujemy filtr na logger uvicorn.access
+uvicorn_access = logging.getLogger("uvicorn.access")
+uvicorn_access.addFilter(HealthCheckFilter())
+
+# Logger aplikacji — widoczny w docker logs
+logger = logging.getLogger("nexus_api")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter(
+        "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    logger.addHandler(_handler)
+
 # Baza danych i inne
 from app.database import SessionLocal, Client, Campaign, Lead, GlobalCompany, Base, engine
 from sqlalchemy import func
@@ -36,9 +65,9 @@ def on_startup():
     """Auto-create all database tables if they don't exist."""
     try:
         Base.metadata.create_all(bind=engine)
-        print("✅ Database tables verified/created.")
+        logger.info("[STARTUP] Tabele bazy danych zweryfikowane/utworzone")
     except Exception as e:
-        print(f"⚠️ Database init warning: {e}")
+        logger.warning(f"[STARTUP] Problem z inicjalizacją DB: {e}")
 
 # CORS setup
 app.add_middleware(
@@ -134,8 +163,9 @@ def start_engine_logic():
     try:
         with open(PID_FILE, 'w') as f:
             f.write(str(process.pid))
+        logger.info(f"[ENGINE] Silnik uruchomiony (PID: {process.pid})")
     except Exception as e:
-        print(f"Błąd zapisu PID: {e}")
+        logger.error(f"[ENGINE] Błąd zapisu PID: {e}")
 
 
 def stop_engine_logic():
@@ -144,8 +174,9 @@ def stop_engine_logic():
             with open(PID_FILE, 'r') as f:
                 pid = int(f.read().strip())
             os.kill(pid, signal.SIGTERM)
+            logger.info(f"[ENGINE] Silnik zatrzymany (PID: {pid})")
         except Exception as e:
-            print(f"Błąd zatrzymywania silnika: {e}")
+            logger.error(f"[ENGINE] Błąd zatrzymywania silnika: {e}")
         finally:
             try: os.remove(PID_FILE)
             except: pass
@@ -188,12 +219,14 @@ def engine_status(api_key: str = Security(get_api_key)):
 
 @app.post("/api/engine/start")
 def start_engine(api_key: str = Security(get_api_key)):
+    logger.info("[ENGINE] Żądanie uruchomienia silnika")
     start_engine_logic()
     return {"status": "started"}
 
 
 @app.post("/api/engine/stop")
 def stop_engine(api_key: str = Security(get_api_key)):
+    logger.info("[ENGINE] Żądanie zatrzymania silnika")
     stop_engine_logic()
     return {"status": "stopped"}
 
@@ -201,11 +234,14 @@ def stop_engine(api_key: str = Security(get_api_key)):
 @app.post("/api/engine/sync_briefs")
 def sync_briefs(api_key: str = Security(get_api_key)):
     from app.brief_sync import sync_briefs_to_clients
+    logger.info("[SYNC] Synchronizacja briefów...")
     try:
         with SessionLocal() as session:
             result = sync_briefs_to_clients(session)
+        logger.info(f"[SYNC] Synchronizacja zakończona: {result}")
         return {"status": "success", "result": result}
     except Exception as e:
+        logger.error(f"[SYNC] Błąd synchronizacji: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 
@@ -216,51 +252,82 @@ def sync_briefs(api_key: str = Security(get_api_key)):
 @app.post("/api/engine/manual/{action}")
 async def trigger_manual_action(action: str, client_id: int = Query(...), api_key: str = Security(get_api_key)):
     from app.agents.strategy import generate_strategy
-    from app.agents.scout import run_scout_async 
+    from app.agents.scout import run_scout_async
     from app.agents.researcher import analyze_lead
     from app.agents.writer import generate_email
     from app.scheduler import process_followups, save_draft_via_imap
     from app.tools import verify_sender_dns
-    
+
     with SessionLocal() as session:
         client = session.query(Client).get(client_id)
         if not client: raise HTTPException(status_code=404, detail="Brak klienta")
-        
+
+        logger.info(f"[MANUAL] Akcja '{action}' dla klienta #{client_id} ({client.name})")
+
         if action == "scout":
             camp = session.query(Campaign).filter(Campaign.client_id == client.id, Campaign.status == "ACTIVE").first()
-            if not camp: return {"status": "error", "message": "Brak aktywnego wektora kampanii."}
+            if not camp:
+                logger.warning(f"[MANUAL:SCOUT] Klient #{client_id} — brak aktywnej kampanii")
+                return {"status": "error", "message": "Brak aktywnego wektora kampanii."}
+            logger.info(f"[MANUAL:SCOUT] Generuję strategię dla kampanii #{camp.id}...")
             strategy = generate_strategy(client, camp.strategy_prompt, camp.id)
             if strategy and strategy.search_queries:
+                logger.info(f"[MANUAL:SCOUT] Strategia OK ({len(strategy.search_queries)} zapytań). Uruchamiam scout w tle...")
                 asyncio.create_task(run_scout_async(session, camp.id, strategy))
+            else:
+                logger.warning(f"[MANUAL:SCOUT] Strategia nie zwróciła zapytań — scout nie wystartował")
             return {"status": "success", "message": "Scout odpalony w tle."}
-            
+
         elif action == "analyze":
             leads = session.query(Lead).join(Campaign).filter(Campaign.client_id == client.id, Lead.status == "NEW").limit(5).all()
-            for l in leads: analyze_lead(session, l.id)
+            logger.info(f"[MANUAL:ANALYZE] Znaleziono {len(leads)} leadów NEW do analizy")
+            for i, l in enumerate(leads, 1):
+                logger.info(f"[MANUAL:ANALYZE] Analizuję lead #{l.id} ({i}/{len(leads)})...")
+                try:
+                    analyze_lead(session, l.id)
+                    logger.info(f"[MANUAL:ANALYZE] Lead #{l.id} — analiza zakończona")
+                except Exception as e:
+                    logger.error(f"[MANUAL:ANALYZE] Lead #{l.id} — błąd: {e}", exc_info=True)
             return {"status": "success", "message": f"Przeanalizowano {len(leads)} leadów."}
-            
+
         elif action == "write":
             leads = session.query(Lead).join(Campaign).filter(Campaign.client_id == client.id, Lead.status == "ANALYZED").limit(5).all()
-            for l in leads: generate_email(session, l.id)
+            logger.info(f"[MANUAL:WRITE] Znaleziono {len(leads)} leadów ANALYZED do napisania maili")
+            for i, l in enumerate(leads, 1):
+                logger.info(f"[MANUAL:WRITE] Generuję mail dla lead #{l.id} ({i}/{len(leads)})...")
+                try:
+                    generate_email(session, l.id)
+                    logger.info(f"[MANUAL:WRITE] Lead #{l.id} — mail wygenerowany")
+                except Exception as e:
+                    logger.error(f"[MANUAL:WRITE] Lead #{l.id} — błąd: {e}", exc_info=True)
             return {"status": "success", "message": f"Napisano {len(leads)} maili."}
-            
+
         elif action == "send":
             if client.smtp_user and "@" in client.smtp_user:
                 domain = client.smtp_user.split("@")[1]
                 dns_status = verify_sender_dns(domain)
                 if not dns_status.get("spf_ok") or not dns_status.get("dmarc_ok"):
+                    logger.error(f"[MANUAL:SEND] Blokada DNS dla domeny {domain}: SPF={dns_status.get('spf_ok')}, DMARC={dns_status.get('dmarc_ok')}")
                     return {"status": "error", "message": f"Blokada Antyspamowa DNS dla domeny {domain}"}
-            
+
+            logger.info(f"[MANUAL:SEND] Przetwarzam follow-upy dla klienta #{client_id}...")
             process_followups(session, client)
             leads = session.query(Lead).join(Campaign).filter(Campaign.client_id == client.id, Lead.status == "DRAFTED").limit(5).all()
+            logger.info(f"[MANUAL:SEND] Znaleziono {len(leads)} draftów do wysyłki")
             from sqlalchemy import func as sqlfunc
-            for l in leads:
-                save_draft_via_imap(l, client)
-                l.status = "SENT"
-                l.sent_at = sqlfunc.now()
-                session.commit()
+            for i, l in enumerate(leads, 1):
+                try:
+                    logger.info(f"[MANUAL:SEND] Wysyłam lead #{l.id} ({i}/{len(leads)})...")
+                    save_draft_via_imap(l, client)
+                    l.status = "SENT"
+                    l.sent_at = sqlfunc.now()
+                    session.commit()
+                    logger.info(f"[MANUAL:SEND] Lead #{l.id} — wysłany OK")
+                except Exception as e:
+                    logger.error(f"[MANUAL:SEND] Lead #{l.id} — błąd wysyłki: {e}", exc_info=True)
             return {"status": "success", "message": f"Wysłano i ponowiono FUP dla leadów."}
-            
+
+        logger.warning(f"[MANUAL] Nieznana akcja: '{action}'")
         return {"status": "error", "message": "Nieznana akcja manualna."}
 
 
@@ -708,13 +775,17 @@ def get_client_stats(client_id: int, api_key: str = Security(get_api_key)):
 @app.post("/api/reports/{client_id}/generate")
 def generate_report(client_id: int, api_key: str = Security(get_api_key)):
     from app.agents.reporter import create_pdf_report
+    logger.info(f"[REPORT] Generuję raport PDF dla klienta #{client_id}...")
     with SessionLocal() as session:
         try:
             pdf_path = create_pdf_report(session, client_id)
             if pdf_path and os.path.exists(pdf_path):
+                logger.info(f"[REPORT] Raport wygenerowany: {os.path.basename(pdf_path)}")
                 return {"status": "success", "path": pdf_path, "filename": os.path.basename(pdf_path)}
+            logger.warning(f"[REPORT] Nie udało się wygenerować raportu dla klienta #{client_id}")
             return {"status": "error", "message": "Nie udało się wygenerować raportu."}
         except Exception as e:
+            logger.error(f"[REPORT] Błąd generowania raportu: {e}", exc_info=True)
             return {"status": "error", "message": str(e)}
 
 @app.get("/api/reports/download")
