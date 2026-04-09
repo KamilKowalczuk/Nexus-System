@@ -82,7 +82,7 @@ def recover_for_client(session: Session, client: Client):
     # Znajdź kampanię tego klienta
     campaign = session.query(Campaign).filter(
         Campaign.client_id == client.id,
-        Campaign.is_active == True
+        Campaign.status == "ACTIVE"
     ).first()
     
     if not campaign:
