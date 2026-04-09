@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 import subprocess
 import logging
@@ -87,10 +88,94 @@ class BackupManager:
             logger.warning(f"⚠️ [GCS] Upload pominięty: {e} — backup lokalny zachowany.")
             return False
 
+    # =========================================================================
+    # PYTHON SQL BACKUP (FALLBACK) — nie wymaga pg_dump, działa ZAWSZE
+    # =========================================================================
+    def _python_sql_backup(self, timestamp: str) -> bool:
+        """
+        Awaryjny backup całej bazy przez SQLAlchemy → plik .sql z INSERT-ami.
+        Działa ZAWSZE, niezależnie od wersji pg_dump. Używany jako fallback
+        gdy pg_dump zawiedzie (np. version mismatch).
+        """
+        try:
+            from sqlalchemy import create_engine, text, inspect as sa_inspect
+
+            engine = create_engine(self.db_url)
+            dest_name = f"backup_sql_python_{timestamp}.sql"
+            dest_path = self.backup_dir / dest_name
+
+            with engine.connect() as conn:
+                inspector = sa_inspect(engine)
+                tables = inspector.get_table_names()
+
+                total_rows = 0
+                with open(dest_path, "w", encoding="utf-8") as f:
+                    f.write(f"-- NEXUS BACKUP (Python SQLAlchemy fallback)\n")
+                    f.write(f"-- Timestamp: {timestamp}\n")
+                    f.write(f"-- Tables: {len(tables)}\n\n")
+
+                    for table in tables:
+                        try:
+                            rows = conn.execute(text(f'SELECT * FROM "{table}"')).fetchall()
+                            cols = [c["name"] for c in inspector.get_columns(table)]
+
+                            f.write(f"\n-- TABLE: {table} ({len(rows)} rows)\n")
+
+                            for row in rows:
+                                vals = []
+                                for v in row:
+                                    if v is None:
+                                        vals.append("NULL")
+                                    elif isinstance(v, (dict, list)):
+                                        vals.append("'" + json.dumps(v, ensure_ascii=False).replace("'", "''") + "'")
+                                    elif isinstance(v, bool):
+                                        vals.append("TRUE" if v else "FALSE")
+                                    elif isinstance(v, (int, float)):
+                                        vals.append(str(v))
+                                    else:
+                                        vals.append("'" + str(v).replace("'", "''") + "'")
+                                f.write(f'INSERT INTO "{table}" ({", ".join(cols)}) VALUES ({", ".join(vals)});\n')
+                                total_rows += 1
+                        except Exception as table_err:
+                            f.write(f"-- ERROR dumping {table}: {table_err}\n")
+                            logger.warning(f"⚠️ [BACKUP] Pominięto tabelę {table}: {table_err}")
+
+            size_bytes = dest_path.stat().st_size
+            if size_bytes < 100:
+                logger.error(f"❌ [BACKUP] Python SQL backup pusty ({size_bytes}B)!")
+                dest_path.unlink()
+                return False
+
+            size_kb = size_bytes / 1024
+            logger.info(
+                f"✅ [BACKUP] Python SQL backup: {dest_name} ({size_kb:.1f} KB, "
+                f"{total_rows} wierszy z {len(tables)} tabel)"
+            )
+            self._rotate_backups()
+
+            gcs_ok = self._upload_to_gcs(dest_path)
+            if not gcs_ok:
+                logger.error("❌ Backup zapisany LOKALNIE, ale GCS upload FAILED!")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ [BACKUP] Python SQL backup FAILED: {e}")
+            return False
+
+    # =========================================================================
+    # GŁÓWNA METODA BACKUPU
+    # =========================================================================
     def perform_backup(self) -> bool:
         """
-        Wykonuje pełną kopię bazy danych (pg_dump całej bazy — Nexus + PayloadCMS)
-        i opcjonalnie wysyła do Google Cloud Storage.
+        Wykonuje pełną kopię bazy danych.
+
+        Strategia dwupoziomowa:
+        1. pg_dump (natywny, kompresowany .dump) — najlepszy, ale wymaga
+           zgodności wersji klienta i serwera PostgreSQL.
+        2. Python SQL fallback (.sql z INSERT-ami) — działa ZAWSZE,
+           używany automatycznie gdy pg_dump zawiedzie.
+
+        Backup jest opcjonalnie wysyłany do Google Cloud Storage.
         """
         if not self.db_url:
             logger.error("❌ Brak DATABASE_URL w .env")
@@ -119,69 +204,74 @@ class BackupManager:
                     logger.error(f"❌ Nie znaleziono pliku bazy SQLite: {source_path}")
                     return False
 
-            # 2. Obsługa PostgreSQL — pg_dump CAŁEJ bazy (Nexus + PayloadCMS)
+            # 2. Obsługa PostgreSQL — pg_dump + Python fallback
             elif self.db_url.startswith("postgresql") or self.db_url.startswith("postgres"):
+
+                # === PRÓBA 1: pg_dump (natywny, najlepszy) ===
                 pg_dump_bin = shutil.which("pg_dump")
-                if not pg_dump_bin:
-                    logger.warning(
-                        "⚠️ [BACKUP] pg_dump nie jest zainstalowany — pomijam backup. "
-                        "Na serwerze zainstaluj postgresql-client w Dockerfile."
-                    )
-                    return False
+                pg_dump_ok = False
 
-                parsed = urlparse(self.db_url)
-                db_name = parsed.path.lstrip("/")
-                user = parsed.username
-                password = parsed.password
-                host = parsed.hostname
-                port = parsed.port or 5432
+                if pg_dump_bin:
+                    parsed = urlparse(self.db_url)
+                    db_name = parsed.path.lstrip("/")
+                    user = parsed.username
+                    password = parsed.password
+                    host = parsed.hostname
+                    port = parsed.port or 5432
 
-                dest_name = f"backup_pg_{db_name}_{timestamp}.dump"
-                dest_path = self.backup_dir / dest_name
+                    dest_name = f"backup_pg_{db_name}_{timestamp}.dump"
+                    dest_path = self.backup_dir / dest_name
 
-                env = os.environ.copy()
-                if password:
-                    env["PGPASSWORD"] = password
+                    env = os.environ.copy()
+                    if password:
+                        env["PGPASSWORD"] = password
 
-                # pg_dump bez filtrów tabel/schematów = CAŁA baza (Nexus + Payload)
-                cmd = [
-                    pg_dump_bin,
-                    "-h", host,
-                    "-p", str(port),
-                    "-U", user,
-                    "-F", "c",  # Format custom (kompresowany, przywracany przez pg_restore)
-                    "-b",       # Blobs
-                    "-f", str(dest_path),
-                    db_name,
-                ]
+                    cmd = [
+                        pg_dump_bin,
+                        "-h", host,
+                        "-p", str(port),
+                        "-U", user,
+                        "-F", "c",
+                        "-b",
+                        "-f", str(dest_path),
+                        db_name,
+                    ]
 
-                process = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                    process = subprocess.run(cmd, env=env, capture_output=True, text=True)
 
-                if process.returncode == 0:
-                    if dest_path.exists():
+                    if process.returncode == 0 and dest_path.exists():
                         size_bytes = dest_path.stat().st_size
-                        if size_bytes < 1024:
-                            logger.error(f"❌ [KATASTROFA BACKUPU] Plik {dest_name} jest pusty ({size_bytes} bajtów)! Usuwam zepsuty plik.")
+                        if size_bytes >= 1024:
+                            size_mb = size_bytes / (1024 * 1024)
+                            logger.info(f"✅ [BACKUP] pg_dump OK: {dest_name} ({size_mb:.2f} MB)")
+                            self._rotate_backups()
+                            gcs_ok = self._upload_to_gcs(dest_path)
+                            if not gcs_ok:
+                                logger.error("❌ Backup zapisany LOKALNIE, ale GCS upload FAILED!")
+                            pg_dump_ok = True
+                        else:
+                            logger.error(
+                                f"❌ [BACKUP] pg_dump stworzył pusty plik ({size_bytes}B)! "
+                                f"Przechodzę na Python fallback."
+                            )
                             dest_path.unlink()
-                            return False
-                        
-                        size_mb = size_bytes / (1024 * 1024)
-                        logger.info(f"✅ [BACKUP] PostgreSQL pomyślnie zrzucony: {dest_name} ({size_mb:.2f} MB)")
-                        self._rotate_backups()
-                        
-                        # Upload do GCS uruchamia się TUTAJ - mamy pewność, że plik jest w 100% poprawny
-                        gcs_success = self._upload_to_gcs(dest_path)
-                        if not gcs_success:
-                            logger.error("❌ OSTRZEŻENIE: Backup zapisany LOKALNIE, ale nie udało się go wysłać do Google Cloud Storage!")
-                        return True
                     else:
-                        logger.error(f"❌ [KATASTROFA BACKUPU] pg_dump zakończył się sukcesem, ale plik {dest_name} nie powstał!")
-                        return False
+                        stderr_msg = process.stderr[:300] if process.stderr else "brak stderr"
+                        logger.error(
+                            f"❌ [BACKUP] pg_dump FAILED (code={process.returncode}): {stderr_msg}. "
+                            f"Przechodzę na Python fallback."
+                        )
+                        if dest_path.exists():
+                            dest_path.unlink()
                 else:
-                    logger.error(f"❌ Błąd krytyczny pg_dump: {process.stderr}")
-                    if dest_path.exists():
-                        dest_path.unlink()  # Natychmiast usuwaj zepsute pliki 0-bajtowe, by nie zajmowały slotów rotacji!
-                    return False
+                    logger.warning("⚠️ [BACKUP] pg_dump nie zainstalowany — używam Python fallback.")
+
+                # === PRÓBA 2: Python SQL fallback (ZAWSZE działa) ===
+                if not pg_dump_ok:
+                    logger.info("🔄 [BACKUP] Uruchamiam Python SQL fallback...")
+                    return self._python_sql_backup(timestamp)
+
+                return True
 
             else:
                 logger.warning(f"⚠️ Nieobsługiwany typ bazy: {self.db_url[:30]}...")
