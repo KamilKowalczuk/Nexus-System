@@ -20,7 +20,7 @@ class BackupManager:
         self.backup_dir = Path(os.getcwd()) / backup_dir
         self.max_backups = max_backups
         self.db_url = os.getenv("DATABASE_URL")
-        self.gcs_bucket = os.getenv("GCS_BUCKET_NAME")
+        self.gcs_bucket = os.getenv("GCS_BUCKET_NAME", "").strip() or None
 
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -34,10 +34,10 @@ class BackupManager:
         """
         from google.oauth2 import service_account
 
-        # 1. Pobierz dane z env
-        project_id = os.getenv("GCP_PROJECT_ID")
-        client_email = os.getenv("GCP_CLIENT_EMAIL")
-        raw_key = os.getenv("GCP_PRIVATE_KEY")
+        # 1. Pobierz dane z env i wyczyść ewentualne spacje
+        project_id = os.getenv("GCP_PROJECT_ID", "").strip()
+        client_email = os.getenv("GCP_CLIENT_EMAIL", "").strip()
+        raw_key = os.getenv("GCP_PRIVATE_KEY", "").strip()
 
         if not all([project_id, client_email, raw_key]):
             return None
