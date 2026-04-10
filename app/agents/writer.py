@@ -366,9 +366,9 @@ _FEW_SHOT_POOL: dict[str, list[dict]] = {
             "subject": "zmiana zasad od stycznia",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Od stycznia zmieniły się zasady rozliczania opieki koordynowanej "
-                "— nowe progi aktywności, nowe kary. Część placówek "
-                "dowiedziała się dopiero przy rozliczeniu kwartalnym.</p>"
+                "<p>NFZ systematycznie zaostrza kryteria weryfikacji rozliczeń opieki koordynowanej "
+                "— z naciskiem na progi aktywności i poprawność ścieżek pacjenta. Część placówek "
+                "dowiaduje się o nieszczelnościach dopiero przy rozliczeniu kwartalnym.</p>"
                 "<p>Śledzicie Państwo te zmiany na bieżąco?</p>"
             ),
         },
@@ -430,15 +430,15 @@ _FEW_SHOT_POOL: dict[str, list[dict]] = {
             ),
         },
         {
-            "label": "follow-up, otwarcie: konkretna dana, CTA: dane liczbowe",
+            "label": "follow-up, otwarcie: wymóg NFZ, CTA: dane liczbowe",
             "subject": "Re: kodowanie ICD-10",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_wracam} z konkretną obserwacją — od stycznia 2026 "
-                "NFZ wymaga utrzymania minimum 5%% pacjentów w programie "
-                "opieki koordynowanej, inaczej placówka traci "
-                "podwyższoną stawkę kapitacyjną.</p>"
-                "<p>Sprawdzali Państwo, jak to wygląda w danych Państwa placówki?</p>"
+                "<p>{_wracam} z konkretną obserwacją — NFZ szczegółowo weryfikuje "
+                "utrzymanie określonego poziomu aktywności pacjentów w programie "
+                "opieki koordynowanej. Brak spełnienia warunków oznacza ryzyko "
+                "utraty podwyższonej stawki kapitacyjnej.</p>"
+                "<p>Sprawdzali Państwo, jak ten wskaźnik wygląda w danych Państwa placówki?</p>"
             ),
         },
         {
@@ -1085,12 +1085,20 @@ Schemat:
             "TYP 'WERYFIKACJA': Zapytaj czy weryfikowali jak to wygląda u nich w liczbach."
         ])
 
+        forced_subject_type = random.choice([
+            "Temat jako nazwa podprocesu (np. 'obieg dokumentacji', 'koordynacja')",
+            "Temat jako zmiany (np. 'nowe wymogi', 'zmiana regulacji')",
+            "Temat jako konkretny wskaźnik (np. 'aktywność pacjentów', 'środki kontraktowe')",
+            "Temat jako infrastruktura (np. 'integracja systemów', 'tagowanie wizyt')"
+        ])
+
         if step == 1:
             task_block = f"""ZADANIE: Pierwszy cold email (zapytanie analityczne).
 
 WYMOGI KRYTYCZNE DLA TEJ WIADOMOŚCI:
 - Wymuszony KĄT ATAKU: {forced_angle} — MUSISZ oprzeć treść o ten temat.
 - Wymuszony TYP PYTANIA (CTA): {forced_cta_type} — MUSISZ tak zakończyć maila. Nie używaj domyślnych CTA.
+- Wymuszony STYL TEMATU MAILA (Subject): {forced_subject_type}. BEZWZGLĘDNY ZAKAZ UŻYWANIA SŁÓW: 'pytanie', 'kwestia', 'rozliczenia'.
 
 Schemat:
 1. Powitanie
@@ -1106,6 +1114,7 @@ NIGDY nie stosuj sformułowania "Współpracując z podobnymi..." — to zakazan
 WYMOGI KRYTYCZNE DLA TEJ WIADOMOŚCI:
 - Wymuszony KĄT ATAKU: {forced_angle} — MUSISZ oprzeć treść o ten temat.
 - Wymuszony TYP PYTANIA (CTA): {forced_cta_type} — MUSISZ tak zakończyć maila. Nie używaj domyślnych CTA.
+- Wymuszony STYL TEMATU MAILA (Subject): {forced_subject_type}. BEZWZGLĘDNY ZAKAZ UŻYWANIA SŁÓW: 'pytanie', 'kwestia', 'rozliczenia'.
 
 Schemat:
 1. Powitanie
@@ -1332,7 +1341,8 @@ KRYTERIA (każde oceniasz 0-20, suma = score):
 
 3. ZERO HALUCYNACJI (0-20):
    Czy wszystkie informacje o odbiorcy są prawdziwe (z danych)?
-   Czy nie wymyślono usług, programów, statystyk? 0 pkt = zmyślanie.
+   Czy nie wymyślono usług, programów, statystyk, konkretnych dat (np. "Od stycznia 2025"), kar finansowych ani wskaźników procentowych (np. "5%"), których NIE BYŁO wprost w danych?
+   Audytorze: Model ma tendencję do zmyślania konkretnych nowelizacji prawnych (np. "NFZ zaostrza od stycznia..."). Jeśli zobaczysz konkretną datę lub liczbę, uznaj ją za halucynację. 0 pkt = zmyślanie twardych faktów/liczb.
 
 4. ZGODNOŚĆ Z RODO/UŚUDE (0-20):
    Czy mail NIE zawiera oferty handlowej, obietnic ani nachalnych CTA?
