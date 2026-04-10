@@ -940,15 +940,15 @@ try:
                     e_host = st.text_input("SMTP Host", client.smtp_server)
                     e_imap = st.text_input("IMAP Host", client.imap_server)
                 with et2:
-                    e_port = st.number_input("SMTP Port", value=client.smtp_port or 465)
-                    e_iport = st.number_input("IMAP Port", value=client.imap_port or 993)
+                    e_port = st.number_input("SMTP Port", value=int(client.smtp_port or 465))
+                    e_iport = st.number_input("IMAP Port", value=int(client.imap_port or 993))
                 with et3:
                     e_user = st.text_input("SMTP User", client.smtp_user)
                     e_pass = st.text_input("Hasło Aplikacji", value=client.smtp_password or "", type="password")
                     if client.smtp_password and not is_encrypted(client.smtp_password):
                         st.caption("⚠️ Hasło niezaszyfrowane — zapisz ponownie")
                 
-                e_limit = st.number_input("Limit Dzienny (Docelowy)", value=client.daily_limit or 50)
+                e_limit = st.number_input("Limit Dzienny (Docelowy)", value=int(client.daily_limit or 50))
                 curr_file = client.attachment_filename or "Brak pliku"
                 st.info(f"Obecny załącznik: {curr_file}")
                 e_file = st.file_uploader("Zmień załącznik", type=['pdf', 'docx'])
@@ -966,9 +966,9 @@ try:
 
                 wc1, wc2 = st.columns(2)
                 with wc1:
-                    e_warm_start = st.number_input("Start (ile maili 1. dnia)", value=client.warmup_start_limit or 2, disabled=not e_warm_enable)
+                    e_warm_start = st.number_input("Start (ile maili 1. dnia)", value=int(client.warmup_start_limit or 2), disabled=not e_warm_enable)
                 with wc2:
-                    e_warm_inc = st.number_input("Przyrost (ile więcej co dzień)", value=client.warmup_increment or 2, disabled=not e_warm_enable)
+                    e_warm_inc = st.number_input("Przyrost (ile więcej co dzień)", value=int(client.warmup_increment or 2), disabled=not e_warm_enable)
 
                 if e_warm_enable:
                     final_lim = e_limit
