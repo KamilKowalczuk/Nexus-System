@@ -1,6 +1,16 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
+class SearchQuery(BaseModel):
+    """Pojedyncze zapytanie wyszukiwania z wyborem źródła danych."""
+    query: str = Field(description="Precyzyjne zapytanie do wyszukiwarki. Np. 'Przychodnia near Zamość', 'Software House Kraków'.")
+    source: str = Field(
+        default="maps",
+        description="Źródło danych: 'maps' (Google Maps — firmy lokalne z adresem) lub 'search' (Google Search — firmy online, SaaS, agencje). "
+                    "Użyj 'maps' dla firm z fizyczną lokalizacją (kliniki, biura, sklepy). "
+                    "Użyj 'search' dla firm czysto online (SaaS, startup, e-commerce, agencje bez biura)."
+    )
+
 class StrategyOutput(BaseModel):
     """Struktura wyjściowa Agenta Strategicznego"""
     
@@ -8,8 +18,8 @@ class StrategyOutput(BaseModel):
         description="Krótkie uzasadnienie strategii. Dlaczego wybrałeś te słowa kluczowe?"
     )
     
-    search_queries: List[str] = Field(
-        description="Lista 10-20 precyzyjnych zapytań do wpisania w Google Maps. Np. 'Software House wrocław', 'Python development kraków'."
+    search_queries: List[SearchQuery] = Field(
+        description="Lista 5-10 precyzyjnych zapytań z wyborem źródła (maps/search). Każde zapytanie musi mieć inną LOKALIZACJĘ lub inną BRANŻĘ."
     )
     
     target_locations: List[str] = Field(

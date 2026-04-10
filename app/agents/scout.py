@@ -18,11 +18,12 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 # Importy aplikacji
 from app.database import GlobalCompany, Lead, SearchHistory, Campaign, Client
-from app.schemas import StrategyOutput
+from app.schemas import StrategyOutput, SearchQuery
 from app.rodo_manager import is_domain_opted_out
 from app.model_factory import create_llm, DEFAULT_MODEL
 from app import stats_manager
 from app import critical_monitor
+from app.memory_utils import save_used_queries
 
 # --- KONFIGURACJA ENTERPRISE ---
 load_dotenv()
@@ -66,15 +67,28 @@ def _clean_domain(website_url: str) -> str | None:
         
         if "/" in domain: domain = domain.split("/")[0]
 
-        blacklist = [
-            "facebook.com", "instagram.com", "linkedin.com", "google.com", "youtube.com", "twitter.com", 
-            "booksy.com", "znanylekarz.pl", "yelp.com", "researchgate.net", "wikipedia.org", "medium.com",
-            "glassdoor.com", "indeed.com", "pracuj.pl", "nofluffjobs.com", "justjoin.it", "scholar.google.ca", 
-            "scholar.google.com", "amazon.com", "allegro.pl", "olx.pl", "otomoto.pl", "booking.com", "tripadvisor.com",
-            "f6s.com", "clutch.co", "goodfirms.co", "lekarzebezkolejki.pl", "gumtree.pl", "olx.pl", "sprzedajemy.pl", "gratka.pl", "autotrader.com", "cars.com", "znanylekarz.pl", "yelp.com", "tripadvisor.com", "glassdoor.com", "indeed.com", "pracuj.pl", "nofluffjobs.com", "justjoin.it", "scholar.google.ca", "scholar.google.com"
-        ]
+        blacklist = {
+            # Social media & portale
+            "facebook.com", "instagram.com", "linkedin.com", "google.com", "youtube.com", "twitter.com",
+            "tiktok.com", "pinterest.com", "reddit.com",
+            # Agregatory / marketplace
+            "booksy.com", "znanylekarz.pl", "docplanner.com", "yelp.com", "tripadvisor.com",
+            "booking.com", "amazon.com", "allegro.pl", "olx.pl", "otomoto.pl",
+            "gumtree.pl", "sprzedajemy.pl", "gratka.pl",
+            # Portale pracy
+            "glassdoor.com", "indeed.com", "pracuj.pl", "nofluffjobs.com", "justjoin.it", "gowork.pl",
+            # Akademia / encyklopedie
+            "researchgate.net", "wikipedia.org", "medium.com",
+            "scholar.google.ca", "scholar.google.com",
+            # Katalogi firm (wyniki śmieciowe)
+            "panoramafirm.pl", "pkt.pl", "aleo.com", "firmy.net", "hotfrog.pl",
+            "clutch.co", "goodfirms.co", "f6s.com",
+            "lekarzebezkolejki.pl", "autotrader.com", "cars.com",
+            # Portale rządowe
+            "biznes.gov.pl", "ceidg.gov.pl", "regon.stat.gov.pl",
+        }
         
-        if domain.endswith(".gov") or domain.endswith(".edu"): return None
+        if domain.endswith(".gov") or domain.endswith(".gov.pl") or domain.endswith(".edu"): return None
         if domain in blacklist: return None
         if "." not in domain: return None
 
@@ -198,18 +212,21 @@ Dla każdego kandydata: NAJPIERW sprawdź zakazy, potem ICP. Zatwierdź tylko fi
 
     except Exception as e:
         logger.error(f"AI Filter Error: {e}")
-        return [c.split("|")[0].replace("- ", "").strip() for c in candidates]
+        # BEZPIECZNY FALLBACK: przy awarii AI NIE przepuszczamy śmieci
+        logger.warning("⚠️ AI Gatekeeper padł — odrzucam CAŁY batch (bezpiecznik).")
+        return []
 
 # --- FUNKCJE BAZODANOWE (Wrapper) ---
 
-def _db_get_valid_queries(session: Session, campaign_id: int, raw_queries: List[str]) -> tuple[List[str], int]:
+def _db_get_valid_queries(session: Session, campaign_id: int, raw_queries: List[SearchQuery]) -> tuple[List[SearchQuery], int]:
     campaign_obj = session.query(Campaign).filter(Campaign.id == campaign_id).first()
     client_id = campaign_obj.client_id if campaign_obj else None
     
     valid_queries = []
     print(f"\n🧠 [SCOUT MEMORY] Analizuję {len(raw_queries)} propozycji strategii...")
 
-    for q in raw_queries:
+    for sq in raw_queries:
+        q = sq.query
         last_search = session.query(SearchHistory).filter(
             SearchHistory.client_id == client_id,
             SearchHistory.query_text == q,
@@ -219,7 +236,7 @@ def _db_get_valid_queries(session: Session, campaign_id: int, raw_queries: List[
         if last_search:
             print(f"   🚫 POMIJAM: '{q}' (Szukano: {last_search.searched_at.strftime('%Y-%m-%d')})")
         else:
-            valid_queries.append(q)
+            valid_queries.append(sq)
             
     return valid_queries[:SAFETY_LIMIT_QUERIES], client_id
 
@@ -372,18 +389,19 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
         print("   💤 Scout: Brak nowych zapytań (wszystkie wykorzystane).")
         return 0
 
-    print(f"🚀 [ASYNC SCOUT] Startuję zwiad dla: {valid_queries}")
+    print(f"🚀 [ASYNC SCOUT] Startuję zwiad dla: {[sq.query for sq in valid_queries]}")
 
-    for query in valid_queries:
+    for sq in valid_queries:
+        query = sq.query
+        use_google_search = (sq.source == "search")
+        
         if total_added >= SAFETY_LIMIT_LEADS:
             print(f"   🧨 LIMIT LEADOW OSIĄGNIĘTY. Stop.")
             break
 
         print(f"   📍 Wykonuję: '{query}'...")
         
-        use_google_search = False
-        if "remote" in query.lower() or "saas" in query.lower() or "startup" in query.lower() or "software" in query.lower():
-            use_google_search = True
+        if use_google_search:
             print("      🌐 Tryb: GOOGLE SEARCH")
         else:
             print("      🗺️  Tryb: GOOGLE MAPS")
@@ -431,14 +449,17 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
                     items = raw_items
 
             if not items:
-                print("      ⚠️ Brak wyników w Apify.")
+                print("      ⚠️ Brak wyników w Apify. Zapytanie NIE zostaje spalone.")
+                # NIE zapisujemy do pamięci — można spróbować ponownie
                 continue
 
             await asyncio.to_thread(_db_update_history_results, session, history_id, len(items))
             print(f"      📥 Pobranno {len(items)} surowych wyników.")
 
+            # --- ZAPISZ ZAPYTANIE DO PAMIĘCI (dopiero po sukcesie) ---
+            save_used_queries(campaign_id, [query])
+
             # --- AI GATEKEEPER STEP ---
-            # Zamiast wrzucać wszystko, pytamy Gemini co jest wartościowe
             approved_domains = await _ai_filter_batch(items, client_data)
             
             # STATS: Scouting metryki
@@ -460,7 +481,7 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
                 campaign_id, 
                 items, 
                 query, 
-                approved_domains # Przekazujemy przefiltrowaną listę
+                approved_domains
             )
             
             print(f"      💾 Zapisano {added_in_batch} unikalnych leadów (z {len(approved_domains)} zaakceptowanych).")
@@ -475,7 +496,6 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
             print(f"      ❌ Błąd w Async Scout: {e}")
             logger.error(f"[SCOUT] Błąd: {e}")
             if "unauthorized" in err_str or "invalid token" in err_str or "401" in err_str:
-                # Nieprawidłowy klucz API → natychmiastowy stop
                 critical_monitor.trigger_stop(
                     api_name="apify",
                     reason=f"Apify API zwróciło błąd autoryzacji — sprawdź APIFY_API_KEY w .env.",

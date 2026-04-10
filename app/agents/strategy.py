@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 
 # Importy z Twojej aplikacji
 from app.database import Client
-from app.schemas import StrategyOutput
-from app.memory_utils import load_used_queries, save_used_queries
+from app.schemas import StrategyOutput, SearchQuery
+from app.memory_utils import load_used_queries
 from app.model_factory import create_structured_llm, DEFAULT_MODEL
 
 # Logger
@@ -72,7 +72,7 @@ Ograniczenia: {constraints or "brak"}
 Wygeneruj 5-8 precyzyjnych, RÓŻNORODNYCH zapytań. Format: czysty tekst do wpisania w Google Maps."""
 
     else:
-        system_prompt = f"""Jesteś strategiem lead generation B2B. Twoje zapytania do Google Maps muszą trafiać jak snajper — DOKŁADNIE w profil idealnego klienta, nie obok.
+        system_prompt = f"""Jesteś strategiem lead generation B2B. Twoje zapytania muszą trafiać jak snajper — DOKŁADNIE w profil idealnego klienta.
 
 === NASZ KLIENT (w czyim imieniu szukamy) ===
 Firma: {sender_name}
@@ -92,29 +92,35 @@ Cel kampanii: {raw_intent}
 === STRATEGIA GENEROWANIA ZAPYTAŃ ===
 
 KLUCZOWA ZASADA: Czytaj ICP DOSŁOWNIE.
-- Jeśli ICP mówi "małe firmy" / "do 10 pracowników" / "lokalne" → NIE szukaj sieci, korporacji, franczyz. Szukaj: "gabinet", "studio", "pracownia", "kancelaria", "warsztat".
-- Jeśli ICP mówi "średnie firmy" / "50-200 pracowników" → szukaj: "hurtownia", "fabryka", "producent", "deweloper".
-- Jeśli ICP mówi konkretną branżę → szukaj SYNONIMÓW tej branży (restauracja = bistro, gastrobar, pizzeria, sushi).
+- Jeśli ICP mówi "małe firmy" / "do 10 pracowników" / "lokalne" → NIE szukaj sieci, korporacji, franczyz.
+- Jeśli ICP mówi konkretną branżę → szukaj SYNONIMÓW tej branży.
 
-1. MIKRO-LOKALIZACJE (obowiązkowe dla dużych miast):
-   - Google Maps ucina wyniki po ~20. Dlatego: dzielnice + POI.
-   - "Klinika stomatologiczna near Rynek Główny Kraków" > "Dentysta Kraków"
-   - Mniejsze miasta dają lepsze wyniki (mniej szumu)
+1. MIKRO-LOKALIZACJE (OBOWIĄZKOWE!):
+   Google Maps daje max ~20 wyników per zapytanie per miasto.
+   DLATEGO: dziel duże miasta na dzielnice + szukaj w miastach powiatowych!
+   ✅ "Przychodnia near Zamość" → nowe wyniki
+   ✅ "Gabinet lekarski Chełm" → nowe wyniki
+   ✅ "Klinika near Kraśnik" → nowe wyniki
+   ✅ "Ośrodek zdrowia Biała Podlaska" → nowe wyniki
+   ❌ "Przychodnia Lublin" → już wyczerpane (było na czarnej liście)
+   
+   ZASADA: Każde zapytanie MUSI mieć INNĄ lokalizację (inne miasto lub dzielnicę)!
+   Jeśli duże miasto jest na czarnej liście → szukaj w miastach powiatowych wokół niego.
 
 2. SYNONIMÓW BIZNESOWE:
-   - Nie powtarzaj tego samego słowa. Szukaj jak klienci szukają sami siebie.
    - "Biuro rachunkowe" = "Księgowość", "Doradztwo podatkowe", "Kancelaria podatkowa"
-   - "Firma IT" = "Software House", "Agencja interaktywna", "Studio programistyczne"
+   - "Przychodnia" = "Ośrodek zdrowia", "Poradnia", "Gabinet", "Klinika", "Centrum medyczne"
 
-3. KREATYWNE NISZE:
-   - Kto MA PIENIĄDZE i potrzebuje usług {sender_industry}?
-   - Branże w fazie wzrostu, po fundingu, przed transformacją cyfrową
+3. WYBÓR ŹRÓDŁA (source):
+   - "maps" — firmy z FIZYCZNĄ LOKALIZACJĄ (gabinety, biura, sklepy, warsztaty)
+   - "search" — firmy ONLINE bez wizytówki Google (SaaS, startup, e-commerce, agencje)
+   Domyślnie używaj "maps". "search" tylko gdy ICP wskazuje firmy czysto online.
 
 4. UNIKALNOŚĆ:
-   - "Restaurant Warsaw Mokotów" ≈ "Mokotów Restaurant Warsaw" → DUPLIKAT
-   - Każde zapytanie: inna BRANŻA lub inna LOKALIZACJA
+   - Sprawdzaj CZARNĄ LISTĘ powyżej. NIE generuj zapytań które już były (nawet z inną kolejnością słów).
+   - Każde zapytanie: inna BRANŻA lub inna LOKALIZACJA.
 
-Wygeneruj 5-8 chirurgicznie precyzyjnych zapytań. Format: czysty tekst do Google Maps."""
+Wygeneruj 5-10 chirurgicznie precyzyjnych zapytań."""
 
     print(f"🧠 STRATEGY [{mode}]: Analizuję historię... Generuję zapytania.")
 
@@ -134,9 +140,16 @@ Wygeneruj 5-8 chirurgicznie precyzyjnych zapytań. Format: czysty tekst do Googl
         unique_queries = []
         seen_normalized = set()
         
-        for q in result.search_queries:
-            # Clean query
-            q_clean = q.strip()
+        for sq in result.search_queries:
+            # Handle both SearchQuery objects and plain strings (backward compat)
+            if isinstance(sq, str):
+                q_clean = sq.strip()
+                source = "maps"
+            else:
+                q_clean = sq.query.strip()
+                source = (sq.source or "maps").lower().strip()
+                if source not in ("maps", "search"):
+                    source = "maps"
             
             # Skip empty or too short
             if not q_clean or len(q_clean) < 5:
@@ -158,7 +171,7 @@ Wygeneruj 5-8 chirurgicznie precyzyjnych zapytań. Format: czysty tekst do Googl
                 continue
             
             # Passed all checks
-            unique_queries.append(q_clean)
+            unique_queries.append(SearchQuery(query=q_clean, source=source))
             seen_normalized.add(normalized)
         
         logger.info(f"✅ Generated {len(unique_queries)} unique queries (filtered from {len(result.search_queries)})")
@@ -166,10 +179,11 @@ Wygeneruj 5-8 chirurgicznie precyzyjnych zapytań. Format: czysty tekst do Googl
         # Update result
         result.search_queries = unique_queries
         
-        # Save to memory
-        if unique_queries:
-            save_used_queries(campaign_id, unique_queries)
-        else:
+        # NOTE: Queries are NOT saved to memory here anymore.
+        # They will be saved by scout.py AFTER successful Apify execution.
+        # This prevents "burning" queries that returned 0 results.
+        
+        if not unique_queries:
             logger.error(f"❌ No valid queries after validation - regeneration needed")
     
     return result

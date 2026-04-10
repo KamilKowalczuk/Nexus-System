@@ -494,7 +494,7 @@ async def _handle_scouting(
     )
 
     if strategy and getattr(strategy, "search_queries", None):
-        strategy.search_queries = strategy.search_queries[:2]
+        strategy.search_queries = strategy.search_queries[:4]
         await run_scout_async(session, campaign.id, strategy)
         return True
 
