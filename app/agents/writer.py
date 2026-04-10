@@ -231,245 +231,241 @@ _OPENING_STRATEGIES_FOLLOWUP: list[dict] = [
 
 # --- PULA PRZYKŁADÓW FEW-SHOT (5 per ton, indeksowane kluczem tonu) ---
 # ZASADA: Przykłady definiują styl MOCNIEJ niż reguły. Każdy few-shot to wzór idealnego maila.
-# Język: profesjonalny polski, zero angielskich kalek, zero slangu, ton analityczny.
+# RÓŻNORODNOŚĆ: Każdy przykład MUSI mieć INNY kąt ataku i INNY typ CTA!
+# Kąty: 1) rozliczenia 2) zespół/kadra 3) zmiany regulacyjne 4) dokumentacja 5) audyt/kontrola
 # RODO/UŚUDE: NIGDY nie oferuj wsparcia/pomocy/usług — pytaj TYLKO o procesy i doświadczenia.
 _FEW_SHOT_POOL: dict[str, list[dict]] = {
     "professional": [
         {
-            "label": "cold, z icebreakerem, pytanie o proces",
-            "subject": "rozliczenia NFZ",
+            "label": "cold, kąt: zespół, CTA: kto odpowiada",
+            "subject": "kwestia organizacyjna",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>Na Państwa stronie {_widzialem}, że prowadzicie opiekę koordynowaną "
                 "w trzech ścieżkach — kardiologia, diabetologia i endokrynologia. "
-                "To trzy oddzielne strumienie rozliczeń z NFZ prowadzone równolegle.</p>"
-                "<p>Czy weryfikacja tych rozliczeń to proces, który "
-                "Państwo mają usystematyzowany, czy to wciąż kwestia ad hoc?</p>"
+                "To trzy oddzielne procesy dokumentacyjne prowadzone równolegle.</p>"
+                "<p>Kto u Państwa odpowiada za koordynację tej sprawozdawczości "
+                "— dedykowany zespół, czy to dodatkowy obowiązek lekarzy?</p>"
             ),
         },
         {
-            "label": "cold, bez icebrakera, obserwacja branżowa",
-            "subject": "kwestia kontraktu",
+            "label": "cold, kąt: zmiany regulacyjne, CTA: śledzenie zmian",
+            "subject": "zmiany w wymogach NFZ",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Placówki POZ z kilkoma programami NFZ jednocześnie — CHUK, "
-                "opieka koordynowana, profilaktyka — rzadko mają czas pilnować, "
-                "czy nic im nie ucieka przy rozliczeniach.</p>"
-                "<p>Sprawdzacie to u siebie regularnie, czy raczej reaktywnie?</p>"
+                "<p>Od tego roku NFZ wprowadził nowe wymogi dla placówek realizujących "
+                "opiekę koordynowaną — m.in. obowiązek utrzymania aktywności pacjentów "
+                "w programie.</p>"
+                "<p>Czy Państwo śledzą te zmiany na bieżąco, czy to raczej temat, "
+                "który pojawia się dopiero przy kontroli?</p>"
             ),
         },
         {
-            "label": "cold, trend rynkowy",
-            "subject": "zmiany w rozliczeniach",
+            "label": "cold, kąt: dokumentacja, CTA: jak wygląda proces",
+            "subject": "pytanie o dokumentację",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Od stycznia NFZ zmienił zasady finansowania opieki koordynowanej "
-                "— nowe dodatki motywacyjne, ale też kary za brak aktywności przez "
-                "3 miesiące.</p>"
-                "<p>Śledzicie te zmiany na bieżąco, czy to temat, "
-                "którym warto się zająć?</p>"
+                "<p>Placówki z szerokim zakresem kontraktu NFZ — POZ, specjalistyka, "
+                "profilaktyka — prowadzą równolegle kilka strumieni dokumentacji. "
+                "Każdy z nich ma inne wymagania formalne.</p>"
+                "<p>Jak wygląda u Państwa obieg tej dokumentacji "
+                "— jeden system, czy kilka niezależnych procesów?</p>"
             ),
         },
         {
-            "label": "follow-up, nowy kąt",
-            "subject": "Re: rozliczenia NFZ",
+            "label": "follow-up, kąt: audyt, CTA: doświadczenie z kontrolą",
+            "subject": "Re: kwestia organizacyjna",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_wracam} z jedną myślą. Rozmawiając z innymi przychodniami, "
-                "słyszę że największy problem to nie same rozliczenia — tylko to, "
-                "że nikt nie ma czasu ich weryfikować, dopóki NFZ nie zakwestionuje.</p>"
-                "<p>Jak to u Was wygląda?</p>"
+                "<p>{_wracam} z jedną obserwacją. Przychodnie, które przeszły "
+                "kontrolę NFZ w ostatnim roku, najczęściej wskazują braki "
+                "w dokumentacji opieki koordynowanej jako główny problem.</p>"
+                "<p>Mieli Państwo do czynienia z taką sytuacją?</p>"
             ),
         },
         {
-            "label": "follow-up, pytanie pogłębiające",
-            "subject": "Re: rozliczenia NFZ",
+            "label": "follow-up, kąt: optymalizacja, CTA: niewykorzystane środki",
+            "subject": "Re: kwestia organizacyjna",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_zastawialem} nad jedną rzeczą — przy tylu programach "
-                "równolegle, kto u Państwa odpowiada za pilnowanie terminów "
-                "sprawozdawczości do NFZ?</p>"
-                "<p>Chętnie opowiem, jak inne placówki to rozwiązują, "
-                "jeśli to w ogóle temat.</p>"
+                "<p>{_zastawialem} nad jedną kwestią — przy tak szerokim zakresie "
+                "kontraktu, czy ktoś u Państwa weryfikuje, czy nie przysługują "
+                "dodatkowe środki z nowych programów NFZ, które weszły w tym roku?</p>"
             ),
         },
     ],
     "formal": [
         {
-            "label": "cold, z icebreakerem, formalny",
-            "subject": "kwestia rozliczeń",
+            "label": "cold, kąt: skala działania, CTA: struktura odpowiedzialności",
+            "subject": "kwestia administracyjna",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>Przejrzałem zakres Państwa działalności — POZ, specjalistyka "
-                "i diagnostyka w jednej strukturze. To spory zakres dokumentacji "
-                "i rozliczeń z NFZ po jednej stronie.</p>"
-                "<p>Czy weryfikacja szczelności kontraktu to temat, "
-                "który Państwo obecnie poruszacie?</p>"
+                "i diagnostyka w jednej strukturze. Przy takiej skali pojawia się "
+                "pytanie o podział odpowiedzialności za zgodność dokumentacji.</p>"
+                "<p>Czy zarządzanie zgodnością kontraktową to wydzielona funkcja "
+                "w Państwa placówce?</p>"
             ),
         },
         {
-            "label": "cold, bez icebrakera, formalny",
-            "subject": "pytanie o procesy",
+            "label": "cold, kąt: ryzyko regulacyjne, CTA: przygotowanie na zmiany",
+            "subject": "nowe wymogi kontraktowe",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Placówki o zbliżonym profilu do Państwa coraz częściej "
-                "zgłaszają się do nas z pytaniem o optymalizację rozliczeń "
-                "z płatnikiem publicznym.</p>"
-                "<p>Czy to obszar, w którym widzicie Państwo "
-                "potrzebę zmian?</p>"
+                "<p>W tym roku NFZ zaostrzył kryteria oceny placówek realizujących "
+                "programy profilaktyczne — nowe wskaźniki, nowe terminy "
+                "sprawozdawcze.</p>"
+                "<p>Czy Państwa placówka miała okazję dostosować swoje procesy "
+                "do tych zmian?</p>"
             ),
         },
         {
-            "label": "follow-up, formalny",
-            "subject": "Re: pytanie o procesy",
+            "label": "follow-up, kąt: doświadczenia branży, CTA: porównanie z innymi",
+            "subject": "Re: nowe wymogi kontraktowe",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Wracam do tematu z dodatkową obserwacją. W ostatnich miesiącach "
-                "NFZ zaostrzył wymagania wobec placówek realizujących opiekę "
-                "koordynowaną — straciło na tym kilka przychodni w regionie.</p>"
-                "<p>Gdyby chcieli Państwo to skonsultować — jestem do dyspozycji.</p>"
+                "<p>Wracam do tematu z dodatkową obserwacją. Placówki o zbliżonym "
+                "profilu do Państwa coraz częściej wydzielają osobną funkcję "
+                "do zarządzania zgodnością rozliczeń z NFZ.</p>"
+                "<p>Czy to model, który Państwo również rozważają?</p>"
             ),
         },
         {
-            "label": "cold, pytanie diagnostyczne, formalny",
-            "subject": "dokumentacja kontraktowa",
+            "label": "cold, kąt: dokumentacja medyczna, CTA: integracja systemów",
+            "subject": "pytanie o systemy",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Zauważyłem, że Państwa placówka realizuje jednocześnie "
-                "kilka programów profilaktycznych NFZ. Przy tej skali — "
-                "jak wygląda u Państwa kontrola poprawności sprawozdań?</p>"
-                "<p>Pytam, bo to najczęstszy punkt, w którym placówki "
-                "tracą na kontrakcie.</p>"
+                "<p>Zauważyłem, że Państwa placówka realizuje świadczenia zarówno "
+                "w ramach NFZ, jak i prywatnie. Przy takim modelu kluczowe jest, "
+                "czy system gabinetowy prawidłowo rozdziela te strumienie.</p>"
+                "<p>Jak wygląda u Państwa integracja dokumentacji medycznej "
+                "z raportowaniem kontraktowym?</p>"
             ),
         },
         {
-            "label": "follow-up, zmiana perspektywy, formalny",
-            "subject": "Re: dokumentacja kontraktowa",
+            "label": "follow-up, kąt: kadry, CTA: obciążenie administracyjne",
+            "subject": "Re: pytanie o systemy",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Patrząc na ten temat z innej strony — nawet jeśli rozliczenia "
-                "Państwo mają pod kontrolą, to pytanie brzmi: czy ktoś weryfikuje, "
-                "czy nie przysługują Wam dodatkowe środki z nowych programów NFZ.</p>"
-                "<p>Dajcie Państwo znać, jeśli warto to omówić.</p>"
+                "<p>Patrząc na ten temat z innej strony — placówki z wieloma "
+                "zakresami kontraktowymi często borykają się z obciążeniem "
+                "administracyjnym personelu medycznego.</p>"
+                "<p>Czy to kwestia, z którą Państwo się mierzą?</p>"
             ),
         },
     ],
     "direct": [
         {
-            "label": "cold, z icebreakerem, bezpośredni",
-            "subject": "szybkie pytanie",
-            "body": (
-                "<p>Dzień dobry,</p>"
-                "<p>{_widzialem} że realizujecie trzy programy NFZ jednocześnie. "
-                "To oznacza trzy odrębne procesy sprawozdawcze w jednej administracji.</p>"
-                "<p>Czy weryfikacja poprawności tych rozliczeń to temat, który Państwo obecnie poruszacie?</p>"
-            ),
-        },
-        {
-            "label": "cold, bez icebrakera, bezpośredni",
+            "label": "cold, kąt: kontrola, CTA: doświadczenie",
             "subject": "jedno pytanie",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Przychodnie z kontraktem NFZ w kilku zakresach naraz "
-                "tracą średnio kilka procent kontraktu na błędach w raportowaniu. "
-                "Mało kto to sprawdza na bieżąco.</p>"
-                "<p>Weryfikujecie to u siebie?</p>"
+                "<p>{_widzialem} że realizujecie kilka programów NFZ jednocześnie. "
+                "Przy tej skali kontrola NFZ to kwestia czasu, nie przypadku.</p>"
+                "<p>Byliście Państwo kontrolowani w ostatnim roku?</p>"
             ),
         },
         {
-            "label": "follow-up, bezpośredni",
-            "subject": "Re: jedno pytanie",
+            "label": "cold, kąt: zmiany, CTA: świadomość zmian",
+            "subject": "nowe zasady NFZ",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_wracam} krótko — od stycznia NFZ zmienił zasady "
-                "finansowania. Część placówek straciła na tym nie wiedząc. "
-                "Warto sprawdzić, czy Was to dotyczy.</p>"
-                "<p>Czy to temat, który warto zweryfikować?</p>"
+                "<p>Od stycznia zmieniły się zasady rozliczania opieki koordynowanej "
+                "— nowe progi aktywności, nowe kary. Część placówek "
+                "dowiedziała się o tym dopiero przy rozliczeniu kwartalnym.</p>"
+                "<p>Śledzicie Państwo te zmiany na bieżąco?</p>"
             ),
         },
         {
-            "label": "cold, problem z danych, bezpośredni",
-            "subject": "kontrakt NFZ",
+            "label": "follow-up, kąt: kadry, CTA: obciążenie",
+            "subject": "Re: nowe zasady NFZ",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>POZ plus specjalistyka plus programy profilaktyczne — "
-                "to trzy różne rozliczenia w jednej przychodni. "
-                "Przy takiej skali łatwo coś przeoczyć.</p>"
-                "<p>Czy kontrola poprawności tych rozliczeń to coś, czym Państwo się zajmują?</p>"
+                "<p>{_wracam} z jedną obserwacją — w placówkach o podobnej skali "
+                "sprawozdawczość do NFZ często spada na barki lekarzy, "
+                "zamiast być wydzielonym procesem.</p>"
+                "<p>Jak to jest zorganizowane u Państwa?</p>"
             ),
         },
         {
-            "label": "follow-up, nowy kąt, bezpośredni",
-            "subject": "Re: kontrakt NFZ",
+            "label": "cold, kąt: system gabinetowy, CTA: narzędzia",
+            "subject": "kwestia techniczna",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_wracam} z jedną obserwacją — placówki, które robią "
-                "audyt rozliczeń, zwykle odkrywają że mogą wyciągnąć więcej "
-                "z istniejącego kontraktu. Bez dodatkowej pracy.</p>"
-                "<p>Czy to obszar, któremu Państwo poświęcacie uwagę?</p>"
+                "<p>Placówki z kontraktem NFZ w kilku zakresach mają zwykle "
+                "problem z prawidłowym tagowaniem wizyt w systemie gabinetowym "
+                "— co przekłada się na błędy w rozliczeniach.</p>"
+                "<p>Jak Państwa system radzi sobie z rozdziałem kontraktów?</p>"
+            ),
+        },
+        {
+            "label": "follow-up, kąt: niewykorzystane środki, CTA: weryfikacja",
+            "subject": "Re: kwestia techniczna",
+            "body": (
+                "<p>Dzień dobry,</p>"
+                "<p>{_wracam} z innym pytaniem — czy ktoś u Państwa weryfikuje, "
+                "czy z obecnego kontraktu NFZ wykorzystujecie wszystkie "
+                "przysługujące Wam środki?</p>"
             ),
         },
     ],
     "technical": [
         {
-            "label": "cold, z icebreakerem, techniczny",
+            "label": "cold, kąt: procesy sprawozdawcze, CTA: weryfikacja danych",
             "subject": "sprawozdawczość NFZ",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>{_widzialem} że Państwa placówka realizuje opiekę koordynowaną, "
                 "CHUK i standardowe świadczenia POZ jednocześnie. "
                 "To oznacza trzy odrębne procesy sprawozdawcze do NFZ.</p>"
-                "<p>Jak wygląda u Was weryfikacja poprawności danych "
+                "<p>Jak wygląda u Państwa weryfikacja poprawności danych "
                 "przed wysyłką do płatnika?</p>"
             ),
         },
         {
-            "label": "cold, bez icebrakera, techniczny",
-            "subject": "procesy rozliczeniowe",
+            "label": "cold, kąt: kodowanie procedur, CTA: monitoring błędów",
+            "subject": "kodowanie procedur",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>Pracując z placówkami o podobnym zakresie kontraktu, "
-                "widzimy powtarzający się wzorzec — błędy w kodowaniu procedur "
-                "ICD-10 i rozliczaniu wizyt koordynowanych kosztują "
-                "konkretne pieniądze na kontrakcie.</p>"
-                "<p>Monitorujecie tę stronę u siebie?</p>"
+                "widzimy powtarzający się problem — błędy w kodowaniu procedur "
+                "ICD-10 przy wizytach koordynowanych a standardowych POZ.</p>"
+                "<p>Czy Państwo monitorują poprawność kodowania w raportach do NFZ?</p>"
             ),
         },
         {
-            "label": "follow-up, techniczny",
-            "subject": "Re: procesy rozliczeniowe",
+            "label": "follow-up, kąt: wymogi aktywności, CTA: dane liczbowe",
+            "subject": "Re: kodowanie procedur",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>{_wracam} z konkretną obserwacją — od stycznia 2026 "
                 "NFZ wymaga od placówek z opieką koordynowaną utrzymania "
                 "minimum 5%% pacjentów w programie, inaczej tracą "
                 "podwyższoną stawkę kapitacyjną.</p>"
-                "<p>Sprawdzaliście, jak to wygląda u Was liczbowo?</p>"
+                "<p>Sprawdzali Państwo, jak to wygląda w Państwa danych?</p>"
             ),
         },
         {
-            "label": "cold, fakt + pytanie, techniczny",
-            "subject": "struktura kontraktu",
+            "label": "cold, kąt: integracja systemów, CTA: architektura procesu",
+            "subject": "integracja dokumentacji",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>Na Państwa stronie widziałem zakres obejmujący "
                 "poradnie specjalistyczne i POZ w jednej strukturze. "
-                "Przy takim modelu — rozliczenia idą jednym raportem "
-                "czy każdy zakres osobno?</p>"
-                "<p>Pytam, bo to wpływa na to, ile można wyciągnąć "
-                "z kontraktu.</p>"
+                "Przy takim modelu — kluczowe jest, czy system gabinetowy "
+                "prawidłowo rozdziela wizyty pod odpowiedni kontrakt.</p>"
+                "<p>Jak Państwo to rozwiązali technicznie?</p>"
             ),
         },
         {
-            "label": "follow-up, pytanie pogłębiające, techniczny",
-            "subject": "Re: struktura kontraktu",
+            "label": "follow-up, kąt: obciążenie kadr, CTA: podział obowiązków",
+            "subject": "Re: integracja dokumentacji",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>{_zastawialem} nad jedną kwestią — przy równoległym "
-                "prowadzeniu POZ i opieki koordynowanej, czy Państwa system "
-                "gabinetowy prawidłowo taguje wizyty pod odpowiedni kontrakt?</p>"
-                "<p>To częsty punkt, w którym placówki tracą na rozliczeniach "
-                "nie wiedząc o tym.</p>"
+                "prowadzeniu kilku kontraktów, czy za sprawozdawczość "
+                "odpowiada u Państwa personel medyczny, czy wydzielony "
+                "zespół administracyjny?</p>"
             ),
         },
     ],
@@ -1118,6 +1114,17 @@ nie przez ofertę. Każdy mail to zapytanie o doświadczenia — NIE informacja 
 2. KONKRETNIE. Każde zdanie musi nieść nową informację. Jeśli zdanie można usunąć bez straty sensu — usuń.
 3. NIE SPRZEDAWAJ. Nie mów co oferujesz. Nie oferuj wsparcia. Nie proponuj pomocy. Pytaj o ICH procesy.
 
+=== RÓŻNORODNOŚĆ (KRYTYCZNE) ===
+Każdy mail MUSI mieć INNY kąt ataku. NIE pisz co mail o "rozliczeniach NFZ" w tej samej strukturze.
+Rotuj między tymi OSIAMI TEMATYCZNYMI:
+1. ZESPÓŁ/KADRY — kto u nich odpowiada za dany proces, jaki jest podział ról
+2. ZMIANY REGULACYJNE — nowe wymogi NFZ, zmiany w prawie, terminy
+3. DOKUMENTACJA — obieg dokumentów, systemy gabinetowe, integracja
+4. KONTROLA/AUDYT — doświadczenia z kontrolą NFZ, przygotowanie, ryzyka
+5. OPTYMALIZACJA — niewykorzystane środki, dodatkowe programy, nowe możliwości
+Każde CTA musi być SEMANTYCZNIE INNE — nie przepisuj tego samego pytania innymi słowami.
+ZAKAZANE: pisanie 5 maili pod rząd z tym samym schematem "Placówki [typ] prowadzące [usługi] mają [problem]. Czy to temat?"
+
 === 🛑 ZERO HALUCYNACJI — TWARDY FAKT 🛑 ===
 ABSOLUTNY ZAKAZ zgadywania i dodawania usług, programów, procedur ani cech odbiorcy, których NIE MA wymienionych w sekcji DANE.
 Jeśli wiesz jaka to branża (np. "Ośrodek Zdrowia"), NIE WOLNO Ci zmyślać standardowych usług tej branży (np. "szczepienia, opieka pielęgniarska"), chyba że research to wprost potwierdził!
@@ -1157,7 +1164,17 @@ WAŻNE: Jeśli są poprzednie maile — NIE powtarzaj tych samych argumentów, C
 - HTML: używaj TYLKO <p> i <br>. Żadnych <b>, <strong>, <ul>, <li>, <h1> itp.
 - Każdy akapit w osobnym <p>. Max 2-3 zdania na akapit.
 - Całość: 60-100 słów (bez podpisu). To mail, nie artykuł.
-- Temat (subject): 3-5 słów, brzmi jak wewnętrzna wiadomość, nie reklama.
+
+=== TEMAT MAILA (subject) ===
+3-5 słów. Brzmi jak wewnętrzna wiadomość, nie reklama i nie newsletter.
+ZAKAZ wstawiania "rozliczenia NFZ" w każdy temat — to natychmiast wygląda jak masówka.
+Temat musi pasować do KĄTA ATAKU maila. Rotuj z puli:
+- Kąt zespół/kadry → "pytanie organizacyjne", "kwestia podziału ról", "pytanie o zespół"
+- Kąt regulacje → "nowe wymogi NFZ", "zmiana zasad od stycznia", "pytanie o termin"
+- Kąt dokumentacja → "pytanie o systemy", "obieg dokumentacji", "kwestia techniczna"
+- Kąt kontrola → "jedno pytanie", "przygotowanie do kontroli", "krótkie pytanie"
+- Kąt optymalizacja → "niewykorzystane środki", "dodatkowe programy", "pytanie o kontrakt"
+NIGDY nie zaczynaj tematu od słowa "Rozliczenia".
 
 === CTA — ZAKOŃCZENIE MAILA (MATRYCA ROTACYJNA) ===
 Końcowe pytanie MUSI być zapytaniem analitycznym — NIGDY ofertą ani propozycją spotkania.
