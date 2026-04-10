@@ -1086,10 +1086,10 @@ Schemat:
         ])
 
         forced_subject_type = random.choice([
-            "Temat jako nazwa podprocesu (np. 'obieg dokumentacji', 'koordynacja')",
-            "Temat jako zmiany (np. 'nowe wymogi', 'zmiana regulacji')",
-            "Temat jako konkretny wskaźnik (np. 'aktywność pacjentów', 'środki kontraktowe')",
-            "Temat jako infrastruktura (np. 'integracja systemów', 'tagowanie wizyt')"
+            "Temat jako nazwa podprocesu (np. 'Obieg dokumentacji', 'Koordynacja systemów')",
+            "Temat jako wyzwanie infrastrukturalne (np. 'Integracja systemów', 'Tagowanie wizyt')",
+            "Temat jako konkretny wskaźnik/dane (np. 'Zestawienia dla NFZ', 'Bieżący przegląd kontraktu')",
+            "Temat jako funkcja w zespole (np. 'Zarządzanie sprawozdawczością', 'Rozkład obowiązków')"
         ])
 
         if step == 1:
@@ -1197,15 +1197,10 @@ WAŻNE: Jeśli są poprzednie maile — NIE powtarzaj tych samych argumentów, C
 
 === TEMAT MAILA (subject) ===
 3-5 słów. Brzmi jak wewnętrzna wiadomość, nie reklama i nie newsletter.
+PIERWSZA LITERA TEMATU MUSI BYĆ WIELKA (np. "Obieg dokumentacji" a nie "obieg dokumentacji").
 ZAKAZ wstawiania "rozliczenia NFZ" w każdy temat — to natychmiast wygląda jak masówka.
-Temat musi pasować do KĄTA ATAKU maila. Rotuj z puli:
-- Kąt zespół/kadry → "pytanie organizacyjne", "kwestia podziału ról", "pytanie o zespół"
-- Kąt regulacje → "nowe wymogi NFZ", "zmiana zasad od stycznia", "pytanie o termin"
-- Kąt dokumentacja → "pytanie o systemy", "obieg dokumentacji", "kwestia techniczna"
-- Kąt kontrola → "jedno pytanie", "przygotowanie do kontroli", "krótkie pytanie"
-- Kąt optymalizacja → "niewykorzystane środki", "dodatkowe programy", "pytanie o kontrakt"
 NIGDY nie zaczynaj tematu od słowa "Rozliczenia".
-
+Styl i rodzaj tematu został dokładnie określony w WYMOGACH KRYTYCZNYCH powyżej.
 === CTA — ZAKOŃCZENIE MAILA (MATRYCA ROTACYJNA) ===
 Końcowe pytanie MUSI być zapytaniem analitycznym — NIGDY ofertą ani propozycją spotkania.
 Każde CTA musi pytać o COŚ INNEGO — nie parafrazuj tego samego pytania.
