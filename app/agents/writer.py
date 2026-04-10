@@ -1067,24 +1067,50 @@ Schemat:
         strategy_instruction = strategy_instruction.replace("{_zastawialem}", _zastawialem)
         logger.info(f"   🎯 Strategia: {strategy['name']} ({strategy['id']})")
 
+        # ENGINE v6: Programmatic enforcement of DIVERSITY
+        forced_angle = random.choice([
+            "ZESPÓŁ/KADRY (Kto za to odpowiada, czy mają workflow, podział obowiązków)",
+            "ZMIANY REGULACYJNE/RYZYKO (Kary NFZ, nowe wymogi, zwroty)",
+            "DOKUMENTACJA (Nieszczelność rozliczeń, obieg danych w systemie)",
+            "KONTROLA/AUDYT (Doświadczenia z kontrolą, przygotowanie dokumentacji)",
+            "OPTYMALIZACJA (Niewykorzystane środki, dodatkowe zyski programów)"
+        ])
+        
+        forced_cta_type = random.choice([
+            "TYP 'KTO': Zapytaj kto u nich odpowiada za [proces].",
+            "TYP 'JAK': Zapytaj jak organizacyjnie/technicznie rozwiązali [problem].",
+            "TYP 'CZY ŚLEDZĄ': Zapytaj czy śledzą te zmiany/ryzyka na bieżąco.",
+            "TYP 'DOŚWIADCZENIE': Zapytaj czy mieli do czynienia z taką sytuacją/kontrolą.",
+            "TYP 'WYDZIELONA FUNKCJA': Zapytaj czy to wydzielona funkcja, czy zrzucone na barki lekarzy.",
+            "TYP 'WERYFIKACJA': Zapytaj czy weryfikowali jak to wygląda u nich w liczbach."
+        ])
+
         if step == 1:
             task_block = f"""ZADANIE: Pierwszy cold email (zapytanie analityczne).
+
+WYMOGI KRYTYCZNE DLA TEJ WIADOMOŚCI:
+- Wymuszony KĄT ATAKU: {forced_angle} — MUSISZ oprzeć treść o ten temat.
+- Wymuszony TYP PYTANIA (CTA): {forced_cta_type} — MUSISZ tak zakończyć maila. Nie używaj domyślnych CTA.
 
 Schemat:
 1. Powitanie
 2. Hook — jedno zdanie oparte na icebreaker/researchu. Pokaż że analizujesz ich branżę.
 {strategy_instruction}
-4. Zapytanie (CTA) — czyste pytanie o otwartość na rozmowę.
+4. Zapytanie (CTA) — zadaj to konkretne pytanie, które wymusiłem powyżej.
 WAŻNE: Zakaz używania stwierdzeń "robimy to", "pomagamy w", "nasza oferta to".
 NIGDY nie stosuj sformułowania "Współpracując z podobnymi..." — to zakazana fraza.
 (Bez podpisu — doklejany automatycznie)"""
         else:
             task_block = f"""ZADANIE: Follow-up nr {step} (podtrzymanie zapytania analitycznego).
 
+WYMOGI KRYTYCZNE DLA TEJ WIADOMOŚCI:
+- Wymuszony KĄT ATAKU: {forced_angle} — MUSISZ oprzeć treść o ten temat.
+- Wymuszony TYP PYTANIA (CTA): {forced_cta_type} — MUSISZ tak zakończyć maila. Nie używaj domyślnych CTA.
+
 Schemat:
 1. Powitanie
 {strategy_instruction}
-4. Lekkie CTA (pytanie o otwartość na rozmowę)
+4. Zapytanie (CTA) — zadaj to konkretne pytanie, które wymusiłem powyżej.
 WAŻNE: Zakaz używania stwierdzeń "robimy to", "pomagamy w", "nasza oferta to".
 WAŻNE: NIGDY nie powtórz argumentu/frazy z poprzedniego maila.
 (Bez podpisu — doklejany automatycznie)"""
