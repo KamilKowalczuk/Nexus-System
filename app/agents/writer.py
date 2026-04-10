@@ -1069,20 +1069,20 @@ Schemat:
 
         # ENGINE v6: Programmatic enforcement of DIVERSITY
         forced_angle = random.choice([
-            "ZESPÓŁ/KADRY (Kto za to odpowiada, czy mają workflow, podział obowiązków)",
-            "ZMIANY REGULACYJNE/RYZYKO (Kary NFZ, nowe wymogi, zwroty)",
-            "DOKUMENTACJA (Nieszczelność rozliczeń, obieg danych w systemie)",
-            "KONTROLA/AUDYT (Doświadczenia z kontrolą, przygotowanie dokumentacji)",
-            "OPTYMALIZACJA (Niewykorzystane środki, dodatkowe zyski programów)"
+            "ZESPÓŁ/KADRY (Podział odpowiedzialności, kto u nich koordynuje dany obszar dokumentacyjny)",
+            "ARCHITEKTURA PROCESU (Skomplikowanie wynikające ze skali kontraktu, obieg danych w systemie)",
+            "WYKORZYSTANIE KONTRAKTU (Bieżący przegląd i weryfikacja dostępnych programów w ramach NFZ)",
+            "KONTROLA DANYCH (Sposób weryfikacji poprawności zestawień przed wysyłką do płatnika, unikanie korekt)",
+            "OBCIĄŻENIE MEDYKÓW (Czy sprawy raportowe są wydzielone, czy zrzucone na personel medyczny)"
         ])
         
         forced_cta_type = random.choice([
-            "TYP 'KTO': Zapytaj kto u nich odpowiada za [proces].",
-            "TYP 'JAK': Zapytaj jak organizacyjnie/technicznie rozwiązali [problem].",
-            "TYP 'CZY ŚLEDZĄ': Zapytaj czy śledzą te zmiany/ryzyka na bieżąco.",
-            "TYP 'DOŚWIADCZENIE': Zapytaj czy mieli do czynienia z taką sytuacją/kontrolą.",
-            "TYP 'WYDZIELONA FUNKCJA': Zapytaj czy to wydzielona funkcja, czy zrzucone na barki lekarzy.",
-            "TYP 'WERYFIKACJA': Zapytaj czy weryfikowali jak to wygląda u nich w liczbach."
+            "TYP 'KTO': Zapytaj kto u nich odpowiada za wyżej wymieniony proces (rola/zespół).",
+            "TYP 'JAK': Zapytaj wprost, jak organizacyjnie rozwiązali wyżej wymieniony problem.",
+            "TYP 'WERYFIKACJA': Zapytaj, czy ten konkretny element jest u nich systematycznie weryfikowany.",
+            "TYP 'DOŚWIADCZENIE': Zapytaj, czy z ich perspektywy to temat wymagający dużego zaangażowania.",
+            "TYP 'WYDZIELONA FUNKCJA': Zapytaj, czy ta funkcja jest wydzielona administracyjnie, czy to dodatkowy obowiązek.",
+            "TYP 'CZĘSTOTLIWOŚĆ': Zapytaj, czy analizują to na bieżąco, czy raczej sporadycznie."
         ])
 
         forced_subject_type = random.choice([
