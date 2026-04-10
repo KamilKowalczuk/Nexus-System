@@ -985,7 +985,7 @@ Zwróć TYLKO jedno zdanie, nic więcej."""
         elif target_root and target_root in email_domain:
             s += 50   # Poddomeny lub pokrewne
         else:
-            s -= 80   # Silna kara za obcą domenę
+            s -= 30   # Lekka kara za obcą domenę (gmail/wp jako firmowy = OK, ale niżej w rankingu)
 
         # MX check do sortowania
         if not verify_email_mx(e): s -= 200 
