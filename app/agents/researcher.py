@@ -80,37 +80,37 @@ def extract_emails_from_html(raw_html: str) -> list:
     clean = []
     
     # Kwarantanna: Twarde wykluczenie darmowych poczt domowych (Bramka B2B Only)
-    freemail_domains = {
-        # --- POLSKIE ---
-        'wp.pl', 'o2.pl', 'onet.pl', 'onet.eu', 'op.pl', 'interia.pl', 'interia.eu', 'interia.com',
-        'poczta.fm', 'tlen.pl', 'gazeta.pl', 'go2.pl', 'vp.pl', 'spoko.pl', 'vip.interia.pl',
-        'autograf.pl', 'int.pl', 'aqq.eu', 'poczta.onet.pl', 'poczta.wp.pl', 'pro.wp.pl',
-        'o2.eu', 'buziaczek.pl', 'amorki.pl', 'lubie.to', 'poczta.interia.pl',
-        # --- GOOGLE ---
-        'gmail.com', 'googlemail.com',
-        # --- MICROSOFT ---
-        'hotmail.com', 'outlook.com', 'live.com', 'msn.com', 'windowslive.com', 'passport.com',
-        'outlook.eu', 'hotmail.co.uk', 'live.co.uk',
-        # --- YAHOO & AOL ---
-        'yahoo.com', 'ymail.com', 'rocketmail.com', 'aol.com', 'aim.com',
-        'yahoo.co.uk', 'yahoo.pl',
-        # --- APPLE ---
-        'icloud.com', 'me.com', 'mac.com',
-        # --- BEZPIECZNE / SZYFROWANE ---
-        'protonmail.com', 'protonmail.ch', 'proton.me', 'pm.me',
-        'tutanota.com', 'tutanota.de', 'tutamail.com', 'tuta.io', 'keemail.me',
-        # --- INNE GLOBALNE ---
-        'mail.com', 'zoho.com', 'zoho.eu', 'yandex.com', 'yandex.ru',
-        'gmx.com', 'gmx.net', 'gmx.de', 'fastmail.com', 'fastmail.fm', 'hey.com',
-        'inbox.com', 'mail.ru', 'qq.com', '163.com', '126.com', 'sina.com',
-    }
+    # freemail_domains = {
+    #     # --- POLSKIE ---
+    #     'wp.pl', 'o2.pl', 'onet.pl', 'onet.eu', 'op.pl', 'interia.pl', 'interia.eu', 'interia.com',
+    #     'poczta.fm', 'tlen.pl', 'gazeta.pl', 'go2.pl', 'vp.pl', 'spoko.pl', 'vip.interia.pl',
+    #     'autograf.pl', 'int.pl', 'aqq.eu', 'poczta.onet.pl', 'poczta.wp.pl', 'pro.wp.pl',
+    #     'o2.eu', 'buziaczek.pl', 'amorki.pl', 'lubie.to', 'poczta.interia.pl',
+    #     # --- GOOGLE ---
+    #     'gmail.com', 'googlemail.com',
+    #     # --- MICROSOFT ---
+    #     'hotmail.com', 'outlook.com', 'live.com', 'msn.com', 'windowslive.com', 'passport.com',
+    #     'outlook.eu', 'hotmail.co.uk', 'live.co.uk',
+    #     # --- YAHOO & AOL ---
+    #     'yahoo.com', 'ymail.com', 'rocketmail.com', 'aol.com', 'aim.com',
+    #     'yahoo.co.uk', 'yahoo.pl',
+    #     # --- APPLE ---
+    #     'icloud.com', 'me.com', 'mac.com',
+    #     # --- BEZPIECZNE / SZYFROWANE ---
+    #     'protonmail.com', 'protonmail.ch', 'proton.me', 'pm.me',
+    #     'tutanota.com', 'tutanota.de', 'tutamail.com', 'tuta.io', 'keemail.me',
+    #     # --- INNE GLOBALNE ---
+    #     'mail.com', 'zoho.com', 'zoho.eu', 'yandex.com', 'yandex.ru',
+    #     'gmx.com', 'gmx.net', 'gmx.de', 'fastmail.com', 'fastmail.fm', 'hey.com',
+    #     'inbox.com', 'mail.ru', 'qq.com', '163.com', '126.com', 'sina.com',
+    # }
 
-    # Wzorce placeholder/przykładowych emaili z formularzy kontaktowych
-    _PLACEHOLDER_LOCAL_PARTS = {
-        'your', 'yourname', 'youremail', 'yourmail', 'name', 'email', 'mail',
-        'adres', 'twoj', 'twojmail', 'twojemail', 'uzytkownik', 'user',
-        'test', 'demo', 'sample', 'placeholder', 'example', 'admin123',
-    }
+    # # Wzorce placeholder/przykładowych emaili z formularzy kontaktowych
+    # _PLACEHOLDER_LOCAL_PARTS = {
+    #     'your', 'yourname', 'youremail', 'yourmail', 'name', 'email', 'mail',
+    #     'adres', 'twoj', 'twojmail', 'twojemail', 'uzytkownik', 'user',
+    #     'test', 'demo', 'sample', 'placeholder', 'example', 'admin123',
+    # }
 
     for email in unique:
         parts = email.split('@')
@@ -123,8 +123,9 @@ def extract_emails_from_html(raw_html: str) -> list:
             logger.debug(f"[RESEARCHER] Odrzucono placeholder formularza: {email}")
             continue
 
-        if domain_part in freemail_domains:
-            continue
+        # [DISABLED] Freemail blocking - zakomentowane bo małe placówki używają gmail.com jako firmowego
+        # if domain_part in freemail_domains:
+        #     continue
 
         if email.endswith(('.png', '.jpg', '.jpeg', '.gif', '.css', '.js', '.svg', '.woff', '.webp', '.mp4')):
             continue
@@ -755,6 +756,12 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
    - ZŁE: "Fajnie że macie promocję na mezoterapię" (niezwiązane z ofertą nadawcy)
    - Jeśli ŻADEN fakt na stronie nie wiąże się z ofertą nadawcy → wpisz "Brak"
    - ZAWSZE opieraj się o AKTUALNE informacje. Nie chwytaj się starych programów/dotacji.
+   - ⚠️ PROGRAMY ZDROWOTNE/RZĄDOWE (NFZ, UE, dotacje): Możesz wymienić program PO NAZWIE TYLKO gdy:
+     (a) Nazwa programu jest WYRAŹNIE wymieniona na stronie tej placówki
+     (b) Kontekst wskazuje że program jest AKTUALNIE realizowany (daty z bieżącego roku, aktywna rejestracja)
+     Jeśli widzisz nazwę programu ale BEZ dat lub sygnałów aktywności → UOGÓLNIJ:
+     ❌ "Realizują Państwo program Profilaktyka 40+" (może być nieaktualny!)
+     ✅ "Przy tak szerokim zakresie kontraktów NFZ, koordynacja rozliczeń jest dużym wyzwaniem"
 
 7. PAIN_POINTS / OPPORTUNITIES — 2-3 punkty W KONTEKŚCIE OFERTY NADAWCY:
    - Nie szukaj "bólu ogólnego". Szukaj bólu ZWIĄZANEGO z tym co nadawca może rozwiązać.
@@ -869,12 +876,20 @@ Zwróć TYLKO to jedno słowo."""
         try:
             search_results = _run_async_safe(scraper.search(search_query))
             if search_results and len(search_results) > 10:
-                fact_check_prompt = f"""Dziś jest {current_date_str}. Masz icebreaker ze strony firmy {company.name}: "{research.icebreaker}"
+                fact_check_prompt = f"""Dziś jest {current_date_str}.
+Icebreaker ze strony firmy {company.name}: "{research.icebreaker}"
+
 Oto wyniki wyszukiwania w Google:
 {search_results}
 
-Czy ten temat jest wciąż aktualny w {current_year} roku? Jeśli projekt upadł, wstrzymano go, lub jest stary — zablokuj.
-Zwróć TYLKO słowo 'VALID' jeśli jest bezpieczny do cold maila, lub 'INVALID' jeśli jest przestarzały."""
+Czy ten temat/program/inicjatywa OFICJALNIE DZIAŁA w {current_year} roku w Polsce?
+- Jeśli to program NFZ/rządowy/UE — sprawdź czy jest w aktualnym wykazie, czy nie został wycofany, zawieszony lub zastąpiony innym.
+- Jeśli to inicjatywa/wydarzenie — sprawdź czy jest aktualna, nie historyczna.
+
+Nadawca specjalizuje się w rozliczeniach NFZ — MUSI wiedzieć które programy działają. Wymienienie martwego programu jest NIEPROFESJONALNE.
+
+Zwróć TYLKO słowo 'VALID' jeśli program/temat oficjalnie działa w {current_year}.
+Zwróć 'INVALID' jeśli program zakończono, wstrzymano, zastąpiono lub jest stary."""
                 
                 fc_llm = create_llm(DEFAULT_MODEL, temperature=0.0)
                 fc_resp = fc_llm.invoke([HumanMessage(content=fact_check_prompt)])
@@ -921,43 +936,58 @@ Zwróć TYLKO jedno zdanie, nic więcej."""
         'tutanota.com', 'tuta.io', 'mail.com', 'zoho.com', 'yandex.com', 'gmx.com'
     }
     
-    combined_emails = []
-    for email in _raw_combined:
-        if not email or "@" not in email: continue
-        domain_part = email.split('@')[1].lower().strip()
-        if domain_part in FREEMAILS:
-            print(f"      🚫 FREEMAIL KWARANTANNA: Odrzucono '{email}' (LLM Leak)")
-            continue
-        combined_emails.append(email.lower())
+    # [DISABLED] Freemail blocking — zakomentowane bo małe placówki używają gmail.com jako firmowego
+    # combined_emails = []
+    # for email in _raw_combined:
+    #     if not email or "@" not in email: continue
+    #     domain_part = email.split('@')[1].lower().strip()
+    #     if domain_part in FREEMAILS:
+    #         print(f"      🚫 FREEMAIL KWARANTANNA: Odrzucono '{email}' (LLM Leak)")
+    #         continue
+    #     combined_emails.append(email.lower())
+    combined_emails = [e.lower() for e in _raw_combined if e and "@" in e]
         
     def score_email(email):
         s = 0
         e = email.lower()
+        local_part = e.split('@')[0] if '@' in e else e
+        
         if mode == "JOB_HUNT":
             if any(x in e for x in ['kariera', 'jobs', 'rekrutacja', 'hr', 'people']): s += 20
             if any(x in e for x in ['cto', 'tech', 'engineering']): s += 25
             if any(x in e for x in ['ceo', 'founder']): s += 15
         else:
-            if any(x in e for x in ['ceo', 'owner', 'founder', 'prezes']): s += 20
-            if any(x in e for x in ['kariera', 'jobs', 'rekrutacja', 'iodo', 'rodo', 'dpo', 'inspektor']): s -= 200 
+            # DECYDENCI — najwyższy priorytet
+            if any(x in local_part for x in ['kierownik', 'dyrektor', 'manager', 'zarzad', 'prezes', 'wlasciciel']): s += 30
+            if any(x in local_part for x in ['ceo', 'owner', 'founder']): s += 20
+            # DOBRE OGOLNE — akceptowalne
+            if any(x in local_part for x in ['biuro', 'info', 'hello', 'kontakt', 'office', 'sekretariat']): s += 15
+            # BEZWARTOŚCIOWE SKRZYNKI FUNKCYJNE (użytkowe, nie do kontaktu) — kara
+            if any(x in local_part for x in [
+                'recepty', 'recepta', 'e-recepty', 'erecept',
+                'laboratorium', 'lab', 'wyniki',
+                'kadry', 'zus', 'pit', 'faktury', 'faktura',
+                'newsletter', 'marketing', 'promo',
+            ]): s -= 150
+            # ZABRONIONE — compliance / HR
+            if any(x in local_part for x in ['kariera', 'jobs', 'rekrutacja', 'iodo', 'rodo', 'dpo', 'inspektor']): s -= 200
             
-        if any(x in e for x in ['biuro', 'info', 'hello', 'kontakt', 'office']): s += 15
-        if '.' in e.split('@')[0]: s += 5
+        # Email imienny (jan.kowalski@) — bonus
+        if '.' in local_part and len(local_part) > 5: s += 10
         
         # --- WALIDACJA ZGODNOŚCI DOMENY ---
-        # Zapobiega wysyłaniu na adresy zewnętrznych dostawców IT / RODO z innej domeny
         email_domain = e.split('@')[1] if '@' in e else ""
         target_domain = (company.domain or "").lower().replace("www.", "")
         target_root = target_domain.split('.')[-2] if len(target_domain.split('.')) >= 2 else target_domain
         
         if email_domain == target_domain:
-            s += 100  # Dokładne trafienie w domenę firmy - najwyższy priorytet
+            s += 100  # Dokładne trafienie w domenę firmy
         elif target_root and target_root in email_domain:
             s += 50   # Poddomeny lub pokrewne
         else:
-            s -= 80   # Silna kara za obcą domenę (to zewnętrzni dostawcy obsługujący RODO/WWW)
+            s -= 80   # Silna kara za obcą domenę
 
-        # Tu używamy tylko darmowego MX check do sortowania (nie płacimy jeszcze)
+        # MX check do sortowania
         if not verify_email_mx(e): s -= 200 
         return s
 
