@@ -105,12 +105,12 @@ def extract_emails_from_html(raw_html: str) -> list:
     #     'inbox.com', 'mail.ru', 'qq.com', '163.com', '126.com', 'sina.com',
     # }
 
-    # # Wzorce placeholder/przykładowych emaili z formularzy kontaktowych
-    # _PLACEHOLDER_LOCAL_PARTS = {
-    #     'your', 'yourname', 'youremail', 'yourmail', 'name', 'email', 'mail',
-    #     'adres', 'twoj', 'twojmail', 'twojemail', 'uzytkownik', 'user',
-    #     'test', 'demo', 'sample', 'placeholder', 'example', 'admin123',
-    # }
+    # Wzorce placeholder/przykładowych emaili z formularzy kontaktowych
+    _PLACEHOLDER_LOCAL_PARTS = {
+        'your', 'yourname', 'youremail', 'yourmail', 'name', 'email', 'mail',
+        'adres', 'twoj', 'twojmail', 'twojemail', 'uzytkownik', 'user',
+        'test', 'demo', 'sample', 'placeholder', 'example', 'admin123',
+    }
 
     for email in unique:
         parts = email.split('@')
