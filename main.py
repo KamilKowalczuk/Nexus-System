@@ -78,8 +78,11 @@ SENDING_WINDOW_END = 20    # 20:00
 
 
 def _is_sending_window() -> bool:
-    """Czy jesteśmy w okienku wysyłkowym (8:00-20:00)?"""
-    return SENDING_WINDOW_START <= datetime.now().hour < SENDING_WINDOW_END
+    """Czy jesteśmy w okienku wysyłkowym (8:00-20:00 czasu polskiego)?"""
+    now_pl = datetime.now(PL_TZ)
+    in_window = SENDING_WINDOW_START <= now_pl.hour < SENDING_WINDOW_END
+    logger.debug(f"⏰ Sprawdzam okienko: {now_pl.strftime('%H:%M')} PL → {'TAK' if in_window else 'NIE'}")
+    return in_window
 
 # ==========================================
 # PHASE 2: Optional imports

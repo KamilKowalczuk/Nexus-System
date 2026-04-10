@@ -29,6 +29,7 @@ engine = create_engine(
     max_overflow=10,        # Tyle możemy otworzyć "na chwilę" w szczycie (Burst)
     pool_timeout=30,        # Jak długo wątek czeka na wolne połączenie zanim rzuci błędem
     pool_recycle=1800,      # Reset połączenia co 30 min (zapobiega "SSL SYSCALL error: EOF detected")
+    pool_pre_ping=True,     # ✅ Testuj połączenie przed użyciem — zapobiega "server closed the connection unexpectedly"
     connect_args={
         "application_name": "nexus_engine", # Tagowanie połączeń w logach Postgresa
         "keepalives": 1,
