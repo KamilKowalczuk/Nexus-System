@@ -25,6 +25,4 @@ RUN uv sync --frozen --no-dev
 # Kopiowanie reszty kodu
 COPY . .
 
-# Uruchamiamy TYLKO dashboard — silnik main.py startowany z GUI przyciskiem "URUCHOM"
-# Uruchamianie main.py bezpośrednio z CMD powoduje duplikację procesu (drugi start z GUI).
-CMD ["./start.sh"]
+CMD ["uv", "run", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
