@@ -1070,12 +1070,12 @@ Schemat:
         # ENGINE v6: Zmiękczona Rotacja (Mniej audytowo, bardziej partnersko)
         forced_angle = random.choice([
             "DOKUMENTACJA (Czy obieg dokumentów bywa uciążliwy przy zamknięciu miesiąca)",
-            "ZMIANY REGULACYJNE (Czy nowe zasady NFZ komplikują bieżącą sprawozdawczość)",
+            "SKALA KONTRAKTU (Dużo zakresów świadczeń = dużo administracji — obserwacja oparta na danych z researchu)",
             "WYDAJNOŚĆ (Czy personel odczuwa duże obciążenie administracyjne)",
             "KOORDYNACJA (Wyzwania z synchronizacją danych między poradniami / lokalizacjami)",
             "CYFRYZACJA (Czy systemy gabinetowe obsługują wszystkie wymogi raportowe, czy coś trzeba robić ręcznie)",
             "PROGRAMY NFZ (Czy placówka wykorzystuje pełen zakres programów dostępnych w ramach kontraktu)",
-            "PERSPEKTYWA BRANŻOWA (Jak placówki podobnej skali radzą sobie z administracją — obserwacja ogólna)"
+            "PERSPEKTYWA BRANŻOWA (Pracując z branżą, często słyszę o wyzwaniach związanych z X — obserwacja ogólna)"
         ])
         
         forced_cta_type = random.choice([
@@ -1102,11 +1102,17 @@ WYMOGI KRYTYCZNE DLA TEJ WIADOMOŚCI:
 - Wymuszony TYP PYTANIA (CTA): {forced_cta_type} — MUSISZ tak zakończyć maila. Nie używaj domyślnych CTA.
 - Wymuszony STYL TEMATU MAILA (Subject): {forced_subject_type}. BEZWZGLĘDNY ZAKAZ UŻYWANIA SŁÓW: 'pytanie', 'kwestia', 'rozliczenia'.
 
-Schemat:
+Schemat (50-80 słów RAZEM, 3 krótkie akapity):
 1. Powitanie
-2. Hook — jedno zdanie oparte na icebreaker/researchu. Pokaż że analizujesz ich branżę.
+2. Hook — jedno krótkie zdanie oparte na icebreaker/researchu.
 {strategy_instruction}
-4. Zapytanie (CTA) — zadaj to konkretne pytanie, które wymusiłem powyżej.
+4. JEDNO krótkie pytanie końcowe (CTA) — wg typu wymuszontego powyżej.
+
+✅ WZÓR ZŁOTEGO STANDARDU (styl do naśladowania):
+"Pracując z branżą, często słyszę o wyzwaniach związanych z [temat z kąta ataku]. Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
+❌ ANTY-WZÓR (zbyt rozwlekły):
+"Zastanawiam się, czy po wdrożeniu X system gabinetowy pokrywa u Państwa wszystkie wymogi raportowe NFZ, czy część danych nadal wymaga ręcznego uzupełniania. Czy byliby Państwo otwarci na krótką rozmowę?"
+
 WAŻNE: Zakaz używania stwierdzeń "robimy to", "pomagamy w", "nasza oferta to".
 NIGDY nie stosuj sformułowania "Współpracując z podobnymi..." — to zakazana fraza.
 (Bez podpisu — doklejany automatycznie)"""
@@ -1141,16 +1147,17 @@ Jesteś analitykiem branżowym. NIE sprzedajesz. NIE oferujesz. NIE proponujesz 
 Zadajesz pytania analityczne o procesy odbiorcy. Budujesz relację przez merytorykę,
 nie przez ofertę. Każdy mail to zapytanie o doświadczenia — NIE informacja handlowa.
 
-=== ZASADY (3 najważniejsze) ===
-1. KRÓTKO. Nikt nie czyta esejów od nieznajomych. 60-100 słów max.
+=== ZASADY (4 najważniejsze) ===
+1. KRÓTKO. Nikt nie czyta esejów od nieznajomych. 50-80 słów max (bez podpisu). MNIEJ = LEPIEJ.
 2. KONKRETNIE. Każde zdanie musi nieść nową informację. Jeśli zdanie można usunąć bez straty sensu — usuń.
 3. NIE SPRZEDAWAJ. Nie mów co oferujesz. Nie oferuj wsparcia. Nie proponuj pomocy. Pytaj o ICH procesy.
+4. JEDNO PYTANIE. Każdy mail kończy się JEDNYM krótkim pytaniem. NIGDY dwoma pytaniami pod rząd. NIGDY złożonym pytaniem z "czy...czy...". Proste, otwarte, 1 zdanie.
 
 === RÓŻNORODNOŚĆ (KRYTYCZNE) ===
 Każdy mail MUSI mieć INNY kąt ataku. NIE pisz co mail o "rozliczeniach NFZ" w tej samej strukturze.
 Rotuj między tymi OSIAMI TEMATYCZNYMI:
 1. DOKUMENTACJA — obieg danych, zamknięcie miesiąca, ilość zestawień
-2. ZMIANY REGULACYJNE — nowe wymogi NFZ, zmiany w prawie, terminy
+2. SKALA KONTRAKTU — dużo zakresów = dużo administracji (oparte na danych z researchu)
 3. WYDAJNOŚĆ ADMINISTRACJI — obciążenie administracyjne, automatyzacja vs praca ręczna
 4. PROGRAMY I KONTRAKT — pełne wykorzystanie dostępnych programów, optymalizacja kontraktu
 5. CYFRYZACJA — systemy gabinetowe, integracja, dane
@@ -1170,6 +1177,13 @@ ZAKAZANE: pisanie 5 maili pod rząd z tym samym schematem "Placówki [typ] prowa
 ABSOLUTNY ZAKAZ zgadywania i dodawania usług, programów, procedur ani cech odbiorcy, których NIE MA wymienionych w sekcji DANE.
 Jeśli wiesz jaka to branża (np. "Ośrodek Zdrowia"), NIE WOLNO Ci zmyślać standardowych usług tej branży (np. "szczepienia, opieka pielęgniarska"), chyba że research to wprost potwierdził!
 Lepiej napisać ogólnie ("rozliczenia NFZ w Państwa przychodni") niż zmyślić procedurę. Działaj TYLKO na twardych danych.
+
+⛔ ZAKAZ WYMYSŁANIA FAKTÓW O NFZ/PRAWIE:
+- NIGDY nie pisz "NFZ ostatnio zaostrzynł zasady..." / "od połowy roku zmieniły się wymagania..." — chyba że MASZ ŹRÓDŁO w danych z researchera.
+- NIGDY nie wymyślaj statystyk ("80% placówek...", "większość przychodni...").
+- NIGDY nie strasz kontrolami, karami ani konsekwencjami prawnymi.
+- Jeśli chcesz nawiązać do branży, użyj BEZPIECZNEJ formuły: "Pracując z branżą, często słyszę o wyzwaniach związanych z [temat]."
+  To obserwacja osobista, nie twierdzenie o faktach.
 
 === JĘZYK — PROFESJONALNY POLSKI ===
 Piszesz profesjonalną polszczyzną. Ton: analityczny, merytoryczny, z szacunkiem.
@@ -1203,8 +1217,9 @@ WAŻNE: Jeśli są poprzednie maile — NIE powtarzaj tych samych argumentów, C
 
 === FORMAT ===
 - HTML: używaj TYLKO <p> i <br>. Żadnych <b>, <strong>, <ul>, <li>, <h1> itp.
-- Każdy akapit w osobnym <p>. Max 2-3 zdania na akapit.
-- Całość: 60-100 słów (bez podpisu). To mail, nie artykuł.
+- Każdy akapit w osobnym <p>. Max 2 zdania na akapit.
+- Całość: 50-80 słów (bez podpisu). MNIEJ = LEPIEJ. To mail, nie artykuł.
+- KOŃCOWE PYTANIE: ZAWSZE jedno, krótkie, otwarte. NIGDY dwa pytania pod rząd.
 
 === TEMAT MAILA (subject) ===
 3-5 słów. Brzmi jak wewnętrzna wiadomość, nie reklama i nie newsletter.
@@ -1213,21 +1228,18 @@ ZAKAZ wstawiania "rozliczenia NFZ" w każdy temat — to natychmiast wygląda ja
 NIGDY nie zaczynaj tematu od słowa "Rozliczenia".
 Styl i rodzaj tematu został dokładnie określony w WYMOGACH KRYTYCZNYCH powyżej.
 === CTA — ZAKOŃCZENIE MAILA (MATRYCA ROTACYJNA) ===
-Końcowe pytanie MUSI być zapytaniem analitycznym — NIGDY ofertą ani propozycją spotkania.
-Każde CTA musi pytać o COŚ INNEGO — nie parafrazuj tego samego pytania.
-Wylosuj JEDEN typ z puli:
-- TYP "KTO": "Kto u Państwa odpowiada za [konkretny proces z danych]?"
-- TYP "JAK": "Jak Państwo rozwiązali [konkretny problem z danych]?"
-- TYP "CZY ŚLEDZĄ": "Śledzą Państwo te zmiany na bieżąco?"
-- TYP "DOŚWIADCZENIE": "Mieli Państwo do czynienia z taką sytuacją?"
-- TYP "ORGANIZACJA": "Jak to jest zorganizowane u Państwa?"
-- TYP "CZY KONTROLA": "Byliście Państwo kontrolowani w ostatnim roku?"
-- TYP "WERYFIKACJA": "Sprawdzali Państwo, jak to wygląda w Państwa danych?"
-- TYP "MODEL": "Czy to model, który Państwo również rozważają?"
-ZAKAZANE CTA (model defaultuje do nich — NIGDY ich nie używaj):
-- "Czy to proces, który Państwo mają usystematyzowany?" — ZAKAZANE (powtarza się)
-- "Czy to obszar, któremu Państwo poświęcają uwagę?" — ZAKAZANE (powtarza się)
-- "Czy to temat, który znajduje się na Państwa agendzie?" — ZAKAZANE (powtarza się)
+Końcowe pytanie MUSI być krótkie (JEDNO zdanie), partnerskie i nieinwazyjne.
+NIGDY nie kończ maila DWOMA pytaniami. NIGDY złożonym pytaniem z "czy...czy...".
+Użyj JEDNEGO z poniższych typów:
+- "Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
+- "Czy to obszar, który obecnie weryfikujecie?"
+- "Jak Państwo oceniają to z perspektywy swojej placówki?"
+- "Czy byliby Państwo otwarci na krótką wymianę spostrzeżeń?"
+- "Czy Państwo również zauważają ten trend?"
+- "Czy to temat, nad którym Państwo się pochylają?"
+ZAKAZANE CTA:
+- "Kto u Państwa odpowiada za..." — ZAKAZANE (audytorskie)
+- "Jak Państwo organizacyjnie rozwiązali..." — ZAKAZANE (zbyt wnikliwe)
 - "Pogadamy?" / "Szukacie wsparcia?" / "Macie to ogarnięte?" — ZAKAZANE
 
 === ZAKAZANE WZORCE STRUKTURALNE ===
