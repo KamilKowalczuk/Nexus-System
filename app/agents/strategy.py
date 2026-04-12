@@ -102,18 +102,25 @@ KAŻDE zapytanie: MAKSYMALNIE 2-4 słowa! (synonim + miasto)
 === STRATEGIA ===
 
 1. FORMAT ZAPYTANIA: [synonim branżowy] + [miasto]
-   Przykłady poprawnych zapytań:
-   - "przychodnia Lublin"
-   - "NZOZ Zamość"  
-   - "lekarz rodzinny Chełm"
-   - "centrum medyczne Puławy"
-   - "gabinet lekarski Biłgoraj"
-   - "ośrodek zdrowia Kraśnik"
+    Przykłady poprawnych zapytań:
+    - "przychodnia Lublin"
+    - "lekarz POZ Lublin"
+    - "NZOZ Zamość"  
+    - "lekarz rodzinny Chełm"
+    - "centrum medyczne Puławy"
+    - "gabinet lekarski Biłgoraj"
+    - "praktyka lekarza rodzinnego Chełm"
+    - "indywidualna praktyka lekarska Puławy"
+    - "gabinet lekarza rodzinnego Biłgoraj"
+    - "ośrodek zdrowia Kraśnik"
 
 2. RÓŻNICUJ SYNONIMY w ramach tego samego miasta:
    Każdy synonim daje INNE wyniki w Google Maps!
    Synonimy: przychodnia, NZOZ, centrum medyczne, ośrodek zdrowia,
-   lekarz rodzinny, gabinet lekarski, poradnia, praktyka lekarska
+   lekarz rodzinny, gabinet lekarski, poradnia, praktyka lekarska 
+   - Synonimy dla MAŁYCH firm (unikaj dużych klinik!):
+   NZOZ, lekarz POZ, praktyka lekarza rodzinnego, gabinet lekarza rodzinnego, 
+   ośrodek zdrowia, indywidualna praktyka lekarska, przychodnia rodzinna
 
 3. RÓŻNICUJ MIASTA — od największych:
    Duże: Lublin, Zamość, Chełm, Biała Podlaska, Puławy, Świdnik
