@@ -605,6 +605,166 @@ Produkty/usługi: {", ".join(research.key_products or [])}
         return True, f"Błąd gatekeepera ({type(e).__name__}) — przepuszczono domyślnie."
 
 
+# ---------------------------------------------------------------------------
+# FACT-CHECKER: Weryfikacja faktów przez DuckDuckGo
+# ---------------------------------------------------------------------------
+
+class _FactCheckVerdict(BaseModel):
+    """Werdykt fact-checkera dla jednego twierdzenia."""
+    claim: str = Field(description="Twierdzenie do sprawdzenia.")
+    verified: bool = Field(description="True jeśli wyszukiwanie potwierdza twierdzenie. False jeśli nie.")
+    reason: str = Field(description="Krótkie uzasadnienie (1 zdanie).")
+
+
+def _extract_verifiable_claims(
+    icebreaker: str,
+    pain_points: list[str],
+    company_name: str,
+) -> list[str]:
+    """
+    Wyciąga z icebreakera i pain_points WERYFIKOWALNE twierdzenia.
+    
+    Weryfikowalne = zawiera konkretną nazwę programu, certyfikatu, projektu,
+    regulacji, systemu, daty lub konkretnego faktu.
+    
+    NIE weryfikujemy: ogólnych obserwacji ("szeroki zakres usług"), opinii,
+    pytań retorycznych.
+    """
+    claims = []
+    
+    # Wzorce wskazujące na konkretne, weryfikowalne fakty  
+    import re as _re
+    verifiable_patterns = [
+        # Programy NFZ / rządowe / EU
+        r'program[a-ząóżźćęłśń\s]+(?:NFZ|UE|rządow|zdrowotn|profilaktyczn)',
+        r'(?:e-Gabinet|Profilaktyka|PCR|DiLO|KSI|SOLACE|Moje\s+Zdrowie)',
+        r'certyfikat[a-ząóżźćęłśń\s]*(?:akredytac|ISO|jakości)',
+        r'projekt[a-ząóżźćęłśń\s]+(?:e-|EU|unijn|NFZ)',
+        r'akredytacj[aięą]',
+        # Konkretne systemy IT
+        r'(?:system|platforma|moduł)\s+[A-ZĄÓŻŹĆĘŁŚŃ][a-ząóżźćęłśńA-Z]+',
+        # Daty + kontekst (np. "uruchomiony w maju 2025")
+        r'(?:uruchomion|wdroż|rozpocz|realizowan)[a-ząóżźćęłśń]*\s+(?:w\s+)?(?:\d{4}|stycz|lut|marc|kwiet|maj|czerw|lip|sierp|wrze|paźdz|listop|grudni)',
+        # Konkretne regulacje prawne
+        r'(?:ustawa|rozporządzeni|zarządzeni|dyrektywa)\s+',
+    ]
+    
+    combined_text_blocks = []
+    if icebreaker and icebreaker.lower() != "brak":
+        combined_text_blocks.append(("icebreaker", icebreaker))
+    for pp in pain_points:
+        if pp and "brak specyficznych danych" not in pp.lower():
+            combined_text_blocks.append(("pain_point", pp))
+    
+    for source, text in combined_text_blocks:
+        for pattern in verifiable_patterns:
+            if _re.search(pattern, text, _re.IGNORECASE):
+                claims.append(text)
+                break  # Jeden blok tekstu = jeden claim max
+    
+    # Deduplikacja
+    return list(dict.fromkeys(claims))[:5]  # Max 5 zapytań DDG
+
+
+def _fact_check_with_ddg(
+    research: 'CompanyResearch',
+    company_name: str,
+    company_domain: str,
+    researcher_model: str,
+) -> tuple[bool, list[str]]:
+    """
+    FACT-CHECKER: Weryfikuje konkretne twierdzenia z researchu przez DuckDuckGo.
+    
+    Flow:
+    1. Wyciąga weryfikowalne twierdzenia (nazwy programów, certyfikatów, dat)
+    2. Szuka każdego twierdzenia w DDG + nazwa firmy
+    3. LLM porównuje: "Czy wyniki wyszukiwania potwierdzają to twierdzenie?"
+    4. Nieweryfikowalne twierdzenia są czyszczone
+    
+    Returns:
+        (any_removed: bool, removed_claims: list[str])
+    """
+    claims = _extract_verifiable_claims(
+        icebreaker=research.icebreaker,
+        pain_points=research.pain_points_or_opportunities,
+        company_name=company_name,
+    )
+    
+    if not claims:
+        print("      ✅ FACT-CHECK: Brak weryfikowalnych twierdzeń — skip.")
+        return False, []
+    
+    print(f"      🔍 FACT-CHECK: Sprawdzam {len(claims)} twierdzeń przez DDG...")
+    
+    removed_claims = []
+    
+    for claim in claims:
+        # 1. Szukaj w DDG
+        search_query = f"{company_name} {claim[:80]}"
+        try:
+            search_result = _run_async_safe(scraper.search(search_query), timeout=15)
+        except Exception:
+            search_result = ""
+        
+        if not search_result:
+            # DDG nie zwrócił wyników — nie weryfikujemy, nie blokujemy
+            print(f"         ⚠️ DDG brak wyników dla: {claim[:60]}...")
+            continue
+        
+        # 2. LLM weryfikuje
+        verify_prompt = f"""Jesteś fact-checkerem. Sprawdzasz JEDNO twierdzenie.
+
+TWIERDZENIE (z researchu firmy {company_name}):
+"{claim}"
+
+WYNIKI WYSZUKIWANIA (DuckDuckGo):
+{search_result[:2000]}
+
+PYTANIE: Czy wyniki wyszukiwania POTWIERDZAJĄ to twierdzenie?
+- Jeśli wyniki mówią co innego, program nie istnieje, lub jest nieaktualny → "FALSE"  
+- Jeśli wyniki potwierdzają lub nie przeczą temu twierdzeniu → "TRUE"
+- Jeśli wyniki są niewystarczające do oceny → "TRUE" (nie blokuj przy wątpliwościach)
+
+Odpowiedz TYLKO: TRUE lub FALSE + jedno zdanie uzasadnienia."""
+
+        try:
+            verify_llm = create_llm(DEFAULT_MODEL, temperature=0.0)
+            resp = verify_llm.invoke([HumanMessage(content=verify_prompt)])
+            verdict_text = resp.content if isinstance(resp.content, str) else str(resp.content)
+        except Exception as e:
+            logger.warning(f"[FACT-CHECK] Błąd LLM: {e}")
+            continue
+        
+        if "FALSE" in verdict_text.upper().split("\n")[0]:
+            print(f"         🚫 FAKT ODRZUCONY: {claim[:80]}...")
+            print(f"            Powód: {verdict_text[:150]}")
+            removed_claims.append(claim)
+            
+            # Wyczyść ten fakt z researchu
+            if claim == research.icebreaker:
+                research.icebreaker = "Brak"
+                print("            → Icebreaker wyczyszczony")
+            else:
+                # Usuń z pain_points
+                research.pain_points_or_opportunities = [
+                    pp for pp in research.pain_points_or_opportunities
+                    if pp != claim
+                ]
+                print("            → Pain point usunięty")
+        else:
+            print(f"         ✅ POTWIERDZONE: {claim[:60]}...")
+    
+    if removed_claims:
+        # Jeśli icebreaker wyczyszczony i pain_points puste — dodaj fallback
+        if research.icebreaker == "Brak" and not research.pain_points_or_opportunities:
+            research.pain_points_or_opportunities = [
+                "Brak specyficznych danych na stronie — firma nie informuje szczegółowo "
+                "o swoich procesach, co samo w sobie może być wstępem do rozmowy na żywo."
+            ]
+    
+    return bool(removed_claims), removed_claims
+
+
 def analyze_lead(session: Session, lead_id: int):
     """
     RESEARCHER V4: BULLDOZER + DEBOUNCE VERIFIER + REDIS CACHE.
@@ -897,7 +1057,20 @@ Zwróć TYLKO to jedno słowo."""
         research.icebreaker = "Brak"
         research.pain_points_or_opportunities = ["Brak specyficznych danych na stronie — firma nie informuje szczegółowo o swoich procesach, co samo w sobie może być wstępem do rozmowy na żywo."]
 
-    # 2b. POST-SCRAPE GATEKEEPER — weryfikacja po pełnym zwiadzie
+    # 2b. FACT-CHECK DDG — weryfikacja konkretnych faktów w internecie
+    try:
+        facts_removed, removed_list = _fact_check_with_ddg(
+            research=research,
+            company_name=company.name,
+            company_domain=company.domain,
+            researcher_model=researcher_model,
+        )
+        if facts_removed:
+            print(f"      ⚠️ FACT-CHECK: Usunięto {len(removed_list)} niepotwierdzonych twierdzeń")
+    except Exception as e:
+        logger.warning(f"[FACT-CHECK] Błąd fact-checkera (non-blocking): {e}")
+
+    # 2c. POST-SCRAPE GATEKEEPER — weryfikacja po pełnym zwiadzie
     gk_approved, gk_reason = _ai_gatekeeper_check(
         research=research,
         company_name=company.name,
