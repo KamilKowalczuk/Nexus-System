@@ -160,6 +160,7 @@ class TitanScraper:
             page_timeout=25000,
             excluded_tags=["script", "style", "video", "canvas", "svg", "noscript"],
             wait_until="domcontentloaded",
+            magic=True, # Magiczny tryb anty-bot: maskowanie User-Agent, flag Webdrivera itp.
         )
     
     async def scrape(self, url) -> dict | None:
@@ -213,6 +214,7 @@ class TitanScraper:
             page_timeout=25000,
             excluded_tags=["script", "style", "video", "canvas", "svg", "noscript"],
             wait_until="domcontentloaded",
+            magic=True, # Magiczny tryb anty-bot również w batchu
         )
         
         try:
