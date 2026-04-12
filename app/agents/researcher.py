@@ -1260,9 +1260,8 @@ Zwróć TYLKO to jedno słowo."""
     )
     
     if final_email:
-        # DEDUP: Sprawdź czy ten email nie jest już przypisany do innego leada w tej kampanii
+        # DEDUP: Sprawdź czy ten email nie jest już przypisany GDZIEKOLWIEK (cross-campaign!)
         existing_with_email = session.query(Lead).filter(
-            Lead.campaign_id == lead.campaign_id,
             Lead.target_email == final_email,
             Lead.id != lead.id,
             Lead.status.in_(["SENT", "DRAFTED", "ANALYZED"])

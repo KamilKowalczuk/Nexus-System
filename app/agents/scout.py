@@ -349,15 +349,22 @@ def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Di
 
         if company_obj.id in ids_in_this_campaign: continue
 
-        last_contact = session.query(Lead).filter(
+        # CROSS-CAMPAIGN DEDUP: Sprawdź czy ta firma nie jest JUŻ w jakiejkolwiek kampanii
+        existing_lead = session.query(Lead).filter(
             Lead.global_company_id == company_obj.id,
-            Lead.status == "SENT"
-        ).order_by(desc(Lead.sent_at)).first()
+            Lead.status.in_(["SENT", "DRAFTED", "ANALYZED", "SCRAPED", "NEW"])
+        ).first()
 
-        if last_contact and last_contact.sent_at:
-            days_since = (datetime.now(PL_TZ) - last_contact.sent_at).days
-            if days_since < GLOBAL_CONTACT_COOLDOWN:
-                print(f"      ⏳ {domain}: KARENCJA ({days_since} dni). Skip.")
+        if existing_lead:
+            # Jeśli SENT → karencja 30 dni
+            if existing_lead.status == "SENT" and existing_lead.sent_at:
+                days_since = (datetime.now(PL_TZ) - existing_lead.sent_at).days
+                if days_since < GLOBAL_CONTACT_COOLDOWN:
+                    print(f"      ⏳ {domain}: KARENCJA ({days_since} dni). Skip.")
+                    continue
+            # Jeśli w toku (DRAFTED/ANALYZED/NEW) → pomiń, firma jest już obsługiwana
+            elif existing_lead.status in ("DRAFTED", "ANALYZED", "SCRAPED", "NEW"):
+                print(f"      🔄 {domain}: już w pipeline (lead #{existing_lead.id}, {existing_lead.status}). Skip.")
                 continue
 
         new_lead = Lead(
