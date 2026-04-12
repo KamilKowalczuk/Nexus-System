@@ -116,6 +116,9 @@ class GlobalCompany(Base):
     pain_points = Column(JSONB, default=[])      # ["Wolna strona", "Brak mobile"]
     hiring_status = Column(String)               # "Hiring" / "Layoffs"
     
+    # KONTAKT
+    phone_number = Column(String, nullable=True)  # Numer telefonu z Google Maps
+
     # VALIDATION LAYER
     is_active = Column(Boolean, default=True)
     has_mx_records = Column(Boolean, default=False) 

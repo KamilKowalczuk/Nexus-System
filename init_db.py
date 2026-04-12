@@ -51,6 +51,9 @@ _COLUMN_MIGRATIONS = [
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS scout_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS researcher_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS writer_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
+
+    # Tabela: global_companies — numer telefonu z Google Maps
+    "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS phone_number VARCHAR",
 ]
 
 

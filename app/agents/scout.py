@@ -31,9 +31,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scout")
 APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
 # === BEZPIECZNIKI (FUSES) ===
-BATCH_SIZE = 40             
-SAFETY_LIMIT_LEADS = 20     
-SAFETY_LIMIT_QUERIES = 4    
+BATCH_SIZE = 60             
+SAFETY_LIMIT_LEADS = 500    # Nie hamuj zbierania danych! Limit wysyłki jest na daily_limit.
+SAFETY_LIMIT_QUERIES = 8    
 DUPLICATE_COOLDOWN_DAYS = 30 
 GLOBAL_CONTACT_COOLDOWN = 30 
 
@@ -307,6 +307,7 @@ def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Di
             new_company = GlobalCompany(
                 domain=d,
                 name=title,
+                phone_number=item.get("phone") or item.get("phoneUnformatted"),
                 pain_points=[f"Source: {category}", f"Query: {query}"],
                 is_active=True,
                 quality_score=quality_score
@@ -417,6 +418,7 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
                     "searchStringsArray": [query],
                     "maxCrawledPlacesPerSearch": BATCH_SIZE,
                     "language": "pl",
+                    "countryCode": "pl",
                     "skipClosedPlaces": True,
                     "onlyWebsites": True,
                 }

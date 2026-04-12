@@ -72,55 +72,61 @@ Ograniczenia: {constraints or "brak"}
 Wygeneruj 5-8 precyzyjnych, RÓŻNORODNYCH zapytań. Format: czysty tekst do wpisania w Google Maps."""
 
     else:
-        system_prompt = f"""Jesteś strategiem lead generation B2B. Twoje zapytania muszą trafiać jak snajper — DOKŁADNIE w profil idealnego klienta.
+        system_prompt = f"""Jesteś strategiem lead generation B2B. Generujesz zapytania do Google Maps.
 
-=== NASZ KLIENT (w czyim imieniu szukamy) ===
+=== NASZ KLIENT ===
 Firma: {sender_name}
 Branża: {sender_industry}
 Co oferuje: {uvp}
-Cel kampanii: {raw_intent}
+Cel: {raw_intent}
 
-=== KOGO SZUKAMY (ICP — Ideal Customer Profile) ===
+=== KOGO SZUKAMY (ICP) ===
 {icp}
 
-=== CZEGO NIE SZUKAMY (ograniczenia z briefu) ===
-{constraints or "brak specjalnych ograniczeń"}
+=== OGRANICZENIA ===
+{constraints or "brak"}
 
-=== CZARNA LISTA (UŻYTE — nie powtarzaj) ===
+=== CZARNA LISTA (nie powtarzaj!) ===
 {used_queries_str}
 
-=== STRATEGIA GENEROWANIA ZAPYTAŃ ===
+=== ⚠️ KRYTYCZNA ZASADA: KRÓTKIE ZAPYTANIA! ⚠️ ===
 
-KLUCZOWA ZASADA: Czytaj ICP DOSŁOWNIE.
-- Jeśli ICP mówi "małe firmy" / "do 10 pracowników" / "lokalne" → NIE szukaj sieci, korporacji, franczyz.
-- Jeśli ICP mówi konkretną branżę → szukaj SYNONIMÓW tej branży.
+Google Maps zwraca WIĘCEJ wyników na KRÓTKIE zapytania!
+- ✅ "przychodnia lublin" → 50 wyników 
+- ✅ "NZOZ zamość" → 30 wyników
+- ✅ "centrum medyczne chełm" → 25 wyników
+- ❌ "przychodnia kontrakt NFZ specjalizacja medycyna rodzinna Krasnobród" → 1 wynik!
 
-1. MIKRO-LOKALIZACJE (OBOWIĄZKOWE!):
-   Google Maps daje max ~20 wyników per zapytanie per miasto.
-   DLATEGO: dziel duże miasta na dzielnice + szukaj w miastach powiatowych!
-   ✅ "Przychodnia near Zamość" → nowe wyniki
-   ✅ "Gabinet lekarski Chełm" → nowe wyniki
-   ✅ "Klinika near Kraśnik" → nowe wyniki
-   ✅ "Ośrodek zdrowia Biała Podlaska" → nowe wyniki
-   ❌ "Przychodnia Lublin" → już wyczerpane (było na czarnej liście)
-   
-   ZASADA: Każde zapytanie MUSI mieć INNĄ lokalizację (inne miasto lub dzielnicę)!
-   Jeśli duże miasto jest na czarnej liście → szukaj w miastach powiatowych wokół niego.
+KAŻDE zapytanie: MAKSYMALNIE 2-4 słowa! (synonim + miasto)
 
-2. SYNONIMÓW BIZNESOWE:
-   - "Biuro rachunkowe" = "Księgowość", "Doradztwo podatkowe", "Kancelaria podatkowa"
-   - "Przychodnia" = "Ośrodek zdrowia", "Poradnia", "Gabinet", "Klinika", "Centrum medyczne"
+=== STRATEGIA ===
 
-3. WYBÓR ŹRÓDŁA (source):
-   - "maps" — firmy z FIZYCZNĄ LOKALIZACJĄ (gabinety, biura, sklepy, warsztaty)
-   - "search" — firmy ONLINE bez wizytówki Google (SaaS, startup, e-commerce, agencje)
-   Domyślnie używaj "maps". "search" tylko gdy ICP wskazuje firmy czysto online.
+1. FORMAT ZAPYTANIA: [synonim branżowy] + [miasto]
+   Przykłady poprawnych zapytań:
+   - "przychodnia Lublin"
+   - "NZOZ Zamość"  
+   - "lekarz rodzinny Chełm"
+   - "centrum medyczne Puławy"
+   - "gabinet lekarski Biłgoraj"
+   - "ośrodek zdrowia Kraśnik"
 
-4. UNIKALNOŚĆ:
-   - Sprawdzaj CZARNĄ LISTĘ powyżej. NIE generuj zapytań które już były (nawet z inną kolejnością słów).
-   - Każde zapytanie: inna BRANŻA lub inna LOKALIZACJA.
+2. RÓŻNICUJ SYNONIMY w ramach tego samego miasta:
+   Każdy synonim daje INNE wyniki w Google Maps!
+   Synonimy: przychodnia, NZOZ, centrum medyczne, ośrodek zdrowia,
+   lekarz rodzinny, gabinet lekarski, poradnia, praktyka lekarska
 
-Wygeneruj 5-10 chirurgicznie precyzyjnych zapytań."""
+3. RÓŻNICUJ MIASTA — od największych:
+   Duże: Lublin, Zamość, Chełm, Biała Podlaska, Puławy, Świdnik
+   Średnie: Kraśnik, Łuków, Biłgoraj, Lubartów, Łęczna, Tomaszów Lubelski
+   Mniejsze: Hrubieszów, Radzyń Podlaski, Krasnystaw, Włodawa, Parczew
+
+4. WYBÓR ŹRÓDŁA (source):
+   - "maps" — DOMYŚLNIE (90% zapytań)
+   - "search" — tylko jeśli ICP wymaga firm online
+
+5. UNIKALNOŚĆ: Nie powtarzaj czarnej listy.
+
+Wygeneruj 8-10 KRÓTKICH zapytań (2-4 słowa każde!)."""
 
     print(f"🧠 STRATEGY [{mode}]: Analizuję historię... Generuję zapytania.")
 
