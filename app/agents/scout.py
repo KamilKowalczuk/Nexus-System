@@ -302,11 +302,18 @@ def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Di
             category = item.get("categoryName") or "Web Search"
             total_score = item.get("totalScore", 0) 
             
+            # Adres: street + city z Google Maps
+            street = item.get("street") or item.get("address") or ""
+            city = item.get("city") or ""
+            full_address = f"{street}, {city}".strip(", ") if (street or city) else None
+            
             quality_score = int(total_score * 20) if total_score else 60
 
             new_company = GlobalCompany(
                 domain=d,
                 name=title,
+                industry=category,
+                address=full_address,
                 phone_number=item.get("phone") or item.get("phoneUnformatted"),
                 pain_points=[f"Source: {category}", f"Query: {query}"],
                 is_active=True,

@@ -111,6 +111,8 @@ class GlobalCompany(Base):
     name = Column(String)
     
     # 360 INTELLIGENCE (Z Firecrawl)
+    industry = Column(String, nullable=True)          # Branża z Google Maps (categoryName)
+    address = Column(String, nullable=True)           # Adres fizyczny firmy
     tech_stack = Column(JSONB, default=[])       # ["React", "AWS"]
     decision_makers = Column(JSONB, default=[])  # [{"name": "Jan", "role": "CTO"}]
     pain_points = Column(JSONB, default=[])      # ["Wolna strona", "Brak mobile"]

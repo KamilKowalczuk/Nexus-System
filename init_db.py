@@ -54,6 +54,10 @@ _COLUMN_MIGRATIONS = [
 
     # Tabela: global_companies — numer telefonu z Google Maps
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS phone_number VARCHAR",
+
+    # Tabela: global_companies — branża i adres z Google Maps
+    "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS industry VARCHAR",
+    "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS address VARCHAR",
 ]
 
 
