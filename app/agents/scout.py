@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from apify_client import ApifyClientAsync
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, desc, text
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -370,8 +371,23 @@ def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Di
         added_count += 1
 
     if new_leads_to_add:
-        session.add_all(new_leads_to_add)
-        session.commit()
+        try:
+            session.add_all(new_leads_to_add)
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            # Duplikat wykryty — dodajemy po jednym, pomijając duplikaty
+            logger.warning(f"[SCOUT] IntegrityError — dodaję leady pojedynczo...")
+            actually_added = 0
+            for lead in new_leads_to_add:
+                try:
+                    session.add(lead)
+                    session.commit()
+                    actually_added += 1
+                except IntegrityError:
+                    session.rollback()
+                    logger.debug(f"[SCOUT] Pomijam duplikat: company_id={lead.global_company_id}")
+            return actually_added
         
     return len(new_leads_to_add)
 

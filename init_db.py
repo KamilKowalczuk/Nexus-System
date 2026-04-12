@@ -58,6 +58,9 @@ _COLUMN_MIGRATIONS = [
     # Tabela: global_companies — branża i adres z Google Maps
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS industry VARCHAR",
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS address VARCHAR",
+
+    # Tabela: leads — UNIQUE constraint (campaign + company = max 1 lead)
+    "ALTER TABLE leads ADD CONSTRAINT uq_lead_campaign_company UNIQUE (campaign_id, global_company_id)",
 ]
 
 

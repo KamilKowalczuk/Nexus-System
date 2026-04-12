@@ -148,6 +148,9 @@ class Campaign(Base):
 # --- 4. LEADS (Konkretne Szanse Sprzedażowe) ---
 class Lead(Base):
     __tablename__ = "leads"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "global_company_id", name="uq_lead_campaign_company"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"))

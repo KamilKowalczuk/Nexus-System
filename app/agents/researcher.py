@@ -1260,11 +1260,26 @@ Zwróć TYLKO to jedno słowo."""
     )
     
     if final_email:
-        lead.target_email = final_email
-        lead.status = "ANALYZED"
-        # Dajemy wysoki score tylko jeśli weryfikacja była OK, niższy przy Catch-All
-        lead.ai_confidence_score = 95 if "OK" in verification_note else 65
-        print(f"      ✅ SUKCES: {final_email} {verification_note}")
+        # DEDUP: Sprawdź czy ten email nie jest już przypisany do innego leada w tej kampanii
+        existing_with_email = session.query(Lead).filter(
+            Lead.campaign_id == lead.campaign_id,
+            Lead.target_email == final_email,
+            Lead.id != lead.id,
+            Lead.status.in_(["SENT", "DRAFTED", "ANALYZED"])
+        ).first()
+        
+        if existing_with_email:
+            logger.warning(f"[RESEARCHER] Email {final_email} już przypisany do leada #{existing_with_email.id} ({existing_with_email.status}) — oznaczam MANUAL_CHECK")
+            lead.status = "MANUAL_CHECK"
+            lead.ai_confidence_score = 10
+            lead.ai_analysis_summary = (lead.ai_analysis_summary or "") + f"\n⚠️ DUPLIKAT MAILA: {final_email} jest już w leadzie #{existing_with_email.id}"
+            print(f"      ⚠️ DUPLIKAT MAILA: {final_email} — już w kampanii!")
+        else:
+            lead.target_email = final_email
+            lead.status = "ANALYZED"
+            # Dajemy wysoki score tylko jeśli weryfikacja była OK, niższy przy Catch-All
+            lead.ai_confidence_score = 95 if "OK" in verification_note else 65
+            print(f"      ✅ SUKCES: {final_email} {verification_note}")
     else:
         lead.status = "MANUAL_CHECK"
         lead.ai_confidence_score = 15
