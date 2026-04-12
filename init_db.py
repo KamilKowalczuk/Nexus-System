@@ -62,6 +62,10 @@ _COLUMN_MIGRATIONS = [
     # Tabela: leads — UNIQUE constraint (campaign + company = max 1 lead)
     "ALTER TABLE leads ADD CONSTRAINT uq_lead_campaign_company UNIQUE (campaign_id, global_company_id)",
 
+    # Tabela: leads — popraw typy kolumn (NocoDB tworzy NUMERIC zamiast INTEGER)
+    "ALTER TABLE leads ALTER COLUMN campaign_id TYPE INTEGER USING campaign_id::integer",
+    "ALTER TABLE leads ALTER COLUMN global_company_id TYPE INTEGER USING global_company_id::integer",
+
     # Tabela: leads — FOREIGN KEYS (relacje z campaigns i global_companies)
     "ALTER TABLE leads ADD CONSTRAINT fk_leads_campaign FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE",
     "ALTER TABLE leads ADD CONSTRAINT fk_leads_company FOREIGN KEY (global_company_id) REFERENCES global_companies(id) ON DELETE CASCADE",
