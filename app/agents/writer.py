@@ -1298,6 +1298,8 @@ Kategoria 5 — naciągane implikacje (budują fałszywe wnioski):
 NIE łącz przypadkowych faktów ze strony (np. "mają IOD" → "pewnie mają problemy z rozliczeniami").
 NIE pisz "to zwykle sygnalizuje, że..." — to zawsze brzmi jak bot.
 Jeśli nie masz LOGICZNEGO połączenia między faktem a wnioskiem — nie wymuszaj go.
+NIE używaj daty ostatniej aktualizacji strony jako argumentu ("strona nie była aktualizowana od 2023" → "pewnie mają problemy operacyjne"). To pasywno-agresywne i fałszywe — 90% małych przychodni nie aktualizuje strony regularnie i to jest normalne.
+NIE sugeruj że zaniedbana strona = zaniedbany biznes.
 
 Kategoria 6 — slang i kolokwializmy (zabronione w B2B medycznym):
 "ogarnąć", "ogarnięte", "pogadamy", "gadamy", "fajny", "spoko",
