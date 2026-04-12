@@ -703,9 +703,10 @@ Odrzuć lead TYLKO gdy strona jest całkowicie pusta (404, porzucona domena, zer
    - Szukaj informacji krytycznych blokujących współpracę, np.: "Tymczasowo wstrzymujemy zapisy nowych Pacjentów", "Brak przyjęć", "Gabinety zamknięte", "W likwidacji", "Działalność zawieszona".
    - Wypisz je DOSŁOWNIE z tekstu. Jeśli brak → opuść pole.
 
-7. ICEBREAKER — MOST MIĘDZY OBSERWACJĄ A NADAWCĄ:
-   - Znajdź fakt na stronie POWIĄZANY z kompetencjami nadawcy
-   - Zbuduj z niego MOST: co widzisz → dlaczego to ważne w kontekście nadawcy
+7. ICEBREAKER — OBSERWACJA ZE STRONY (NIE PITCH!):
+   - Znajdź fakt na stronie POWIĄZANY z branżą nadawcy
+   - To MUSI być obserwacja o firmie docelowej. ZAKAZANE: pisanie o usługach nadawcy ("pomagamy", "oferujemy", "eliminujemy chaos")
+   - Zbuduj z niego zdanie: co widzisz → dlaczego to interesujące
    - Jeśli brak konkretu powiązanego z nadawcą → "Brak"
 
 7. SUMMARY — 2 zdania:
@@ -727,6 +728,7 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
    - Imienne (jan.kowalski@, j.kowalska@) → najcenniejsze
    - Firmowe ogólne (biuro@, kontakt@, hello@, info@) → akceptowalne
    - ODRZUĆ: noreply@, privacy@, rodo@, webmaster@, marketing@ (autoresponder)
+   - ODRZUĆ PLACEHOLDERY: yourdomain.com, example.com, twojadomena.pl, domena.pl — to szablony CMS, nie prawdziwe adresy!
    - Przeczytaj uważnie mailto: linki w HTML
 
 2. DECYDENCI — WYŁĄCZNIE Z SEKCJI ZESPÓŁ/TEAM/O NAS:
@@ -748,13 +750,16 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
    - Przepisuj DOSŁOWNIE z menu / sekcji "Oferta" / "Usługi"
    - Szukaj PRZEDE WSZYSTKIM produktów/usług POWIĄZANYCH z branżą nadawcy
 
-6. ICEBREAKER — MOST MIĘDZY OBSERWACJĄ A OFERTĄ NADAWCY:
-   - To NIE JEST "najciekawszy fakt ze strony". To fakt NAJBARDZIEJ POWIĄZANY z ofertą nadawcy.
-   - Schemat myślenia: (1) Co widzę na stronie? (2) Jak to się łączy z tym co nadawca oferuje? (3) Gotowe zdanie.
-   - DOBRE (nadawca = rozliczenia NFZ): "Widzę szeroką ofertę POZ z kontraktem NFZ — koordynacja tylu świadczeń to wyzwanie administracyjne"
-   - DOBRE (nadawca = strony WWW): "Państwa strona nie była aktualizowana od 2020 roku — to często pierwszy sygnał, że warto odświeżyć obecność online"
-   - ZŁE: "Fajnie że macie promocję na mezoterapię" (niezwiązane z ofertą nadawcy)
-   - Jeśli ŻADEN fakt na stronie nie wiąże się z ofertą nadawcy → wpisz "Brak"
+6. ICEBREAKER — OBSERWACJA ZE STRONY (NIE PITCH!):
+   - To MUSI BYĆ obserwacja o FIRMIE DOCELOWEJ, NIE o nadawcy.
+   - ZAKAZANE: "pomagamy placówkom takim jak Państwa", "oferujemy", "eliminujemy chaos" — to PITCH, nie icebreaker!
+   - ZAKAZANE: pisanie czegokolwiek o usługach/ofercie nadawcy w icebreaker.
+   - Schemat: (1) Konkretny fakt ze strony docelowej firmy → (2) Dlaczego to interesujące w kontekście branży → (3) Gotowe zdanie.
+   - DOBRE: "Placówka łączy POZ z kilkunastoma poradniami specjalistycznymi i prowadzi punkt pobrań — to szeroki zakres do koordynacji."
+   - DOBRE: "Na stronie widać aktywne programy profilaktyczne NFZ uruchomione w 2025 roku."
+   - ZŁE: "Pomagamy placówkom takim jak Państwa eliminować chaos w rozliczeniach" (to PITCH!)
+   - ZŁE: "Fajnie że macie promocję na mezoterapię" (niezwiązane z branżą nadawcy)
+   - Jeśli ŻADEN fakt na stronie nie wiąże się z branżą nadawcy → wpisz "Brak"
    - ZAWSZE opieraj się o AKTUALNE informacje. Nie chwytaj się starych programów/dotacji.
    - ⚠️ PROGRAMY ZDROWOTNE/RZĄDOWE (NFZ, UE, dotacje): Możesz wymienić program PO NAZWIE TYLKO gdy:
      (a) Nazwa programu jest WYRAŹNIE wymieniona na stronie tej placówki
@@ -945,7 +950,8 @@ Zwróć TYLKO jedno zdanie, nic więcej."""
     #         print(f"      🚫 FREEMAIL KWARANTANNA: Odrzucono '{email}' (LLM Leak)")
     #         continue
     #     combined_emails.append(email.lower())
-    combined_emails = [e.lower() for e in _raw_combined if e and "@" in e]
+    PLACEHOLDER_DOMAINS = {"yourdomain.com", "example.com", "twojadomena.pl", "domena.pl", "email.com", "test.com", "sampleemail.com"}
+    combined_emails = [e.lower() for e in _raw_combined if e and "@" in e and e.split("@")[1].lower().strip() not in PLACEHOLDER_DOMAINS]
         
     def score_email(email):
         s = 0
