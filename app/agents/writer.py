@@ -1109,7 +1109,7 @@ Schemat (50-80 słów RAZEM, 3 krótkie akapity):
 4. JEDNO krótkie pytanie końcowe (CTA) — wg typu wymuszontego powyżej.
 
 ✅ WZÓR ZŁOTEGO STANDARDU (styl do naśladowania):
-"Pracując z branżą, często słyszę o wyzwaniach związanych z [temat z kąta ataku]. Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
+"Przychodnie z kontraktem NFZ mają coraz więcej do udokumentowania. Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
 ❌ ANTY-WZÓR (zbyt rozwlekły):
 "Zastanawiam się, czy po wdrożeniu X system gabinetowy pokrywa u Państwa wszystkie wymogi raportowe NFZ, czy część danych nadal wymaga ręcznego uzupełniania. Czy byliby Państwo otwarci na krótką rozmowę?"
 
@@ -1178,12 +1178,18 @@ ABSOLUTNY ZAKAZ zgadywania i dodawania usług, programów, procedur ani cech odb
 Jeśli wiesz jaka to branża (np. "Ośrodek Zdrowia"), NIE WOLNO Ci zmyślać standardowych usług tej branży (np. "szczepienia, opieka pielęgniarska"), chyba że research to wprost potwierdził!
 Lepiej napisać ogólnie ("rozliczenia NFZ w Państwa przychodni") niż zmyślić procedurę. Działaj TYLKO na twardych danych.
 
+⛔ ZAKAZ NAZW PROGRAMÓW ZDROWOTNYCH:
+- NIGDY nie wymieniaj nazw konkretnych programów NFZ (np. "Profilaktyka 40+", "Program CHUK", "FENIKS") w treści maila.
+- Programy zmieniają się co rok — jeśli wymienisz nieaktualny program, klient natychmiast wie że NIE jesteś ekspertem.
+- Zamiast "Prowadzą Państwo Profilaktykę 40+" → pisz "Prowadzą Państwo programy profilaktyczne w ramach kontraktu".
+- Wyjątek: jeśli icebreaker WPROST wymienia program — możesz go użyć TYLKO w hooku.
+
 ⛔ ZAKAZ WYMYSŁANIA FAKTÓW O NFZ/PRAWIE:
 - NIGDY nie pisz "NFZ ostatnio zaostrzynł zasady..." / "od połowy roku zmieniły się wymagania..." — chyba że MASZ ŹRÓDŁO w danych z researchera.
 - NIGDY nie wymyślaj statystyk ("80% placówek...", "większość przychodni...").
 - NIGDY nie strasz kontrolami, karami ani konsekwencjami prawnymi.
-- Jeśli chcesz nawiązać do branży, użyj BEZPIECZNEJ formuły: "Pracując z branżą, często słyszę o wyzwaniach związanych z [temat]."
-  To obserwacja osobista, nie twierdzenie o faktach.
+- Jeśli chcesz nawiązać do branży, użyj BEZPIECZNEJ formuły: krótka ogólna obserwacja + pytanie.
+  Np.: "Przychodnie z kontraktem NFZ mają coraz więcej do udokumentowania." — to prawda ogólna, nie twierdzenie o faktach.
 
 === JĘZYK — PROFESJONALNY POLSKI ===
 Piszesz profesjonalną polszczyzną. Ton: analityczny, merytoryczny, z szacunkiem.
@@ -1246,10 +1252,11 @@ ZAKAZANE CTA:
 NIE zaczynaj treści maila od: "Placówki [typ] prowadzące [usługi]..." — ten schemat powtarza się zbyt często.
 Zamiast tego ROTUJ otwarcie:
 1. ICEBREAKER: "Na Państwa stronie widziałam, że..." (konkret ze strony)
-2. FAKT: "Od stycznia NFZ zmienił..." (konkretna zmiana regulacyjna)
+2. OBSERWACJA: "Przychodnie z kontraktem NFZ mają coraz więcej do udokumentowania." (ogólna prawda branżowa)
 3. PYTANIE WPROST: "Przy tak szerokim zakresie kontraktu..." (od razu do sedna)
-4. OBSERWACJA: "Pracując z placówkami o podobnym profilu..." (branżowa obserwacja)
+4. KONKRET Z DANYCH: "Widziałam, że prowadzicie Państwo [konkretna usługa z researchu]..." (fakt ze strony)
 NIE używaj 2x tego samego schematu otwarcia pod rząd.
+NIGDY nie zaczynaj od zmian regulacyjnych których nie masz w danych — to prowadzi do kłamstw.
 
 === ZAKAZANE ZWROTY (użycie = dyskwalifikacja) ===
 
@@ -1271,6 +1278,13 @@ Kategoria 3 — puste obietnice (naruszające UŚUDE):
 "nasze usługi pomogą", "kierujemy do państwa ofertę",
 "Współpracując z podobnymi", "eliminujemy chaos", "kompleksowo",
 wszelkie liczby/procenty/statystyki których NIE MA w danych powyżej
+
+Kategoria 3b — powtarzalne formuły (bot-markers przez monotonię):
+"Pracując z branżą, często słyszę" — użyj MAX RAZ na 5 maili. Rotuj z innymi otwarciami.
+"Jedne placówki... inne..." — ZAKAZANE. To schemat porównawczy który powtarza się w każdym mailu.
+"Obe ścieżki mają swoje konsekwencje" — ZAKAZANE. Puste stwierdzenie.
+"rosną z roku na rok" / "rosnące wymagania" — użyj MAX RAZ na 5 maili.
+"Ciekawi mnie, jak to wygląda u Państwa" — ZAKAZANE. Brzmi fałszywie.
 
 Kategoria 4 — angielskie kalki (marker AI w polskim tekście):
 "zostawiać pieniądze na stole", "nie zostawia pieniędzy na stole",
