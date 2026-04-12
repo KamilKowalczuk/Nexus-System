@@ -1067,29 +1067,31 @@ Schemat:
         strategy_instruction = strategy_instruction.replace("{_zastawialem}", _zastawialem)
         logger.info(f"   🎯 Strategia: {strategy['name']} ({strategy['id']})")
 
-        # ENGINE v6: Programmatic enforcement of DIVERSITY
+        # ENGINE v6: Zmiękczona Rotacja (Mniej audytowo, bardziej partnersko)
         forced_angle = random.choice([
-            "ZESPÓŁ/KADRY (Podział odpowiedzialności, kto u nich koordynuje dany obszar dokumentacyjny)",
-            "ARCHITEKTURA PROCESU (Skomplikowanie wynikające ze skali kontraktu, obieg danych w systemie)",
-            "WYKORZYSTANIE KONTRAKTU (Bieżący przegląd i weryfikacja dostępnych programów w ramach NFZ)",
-            "KONTROLA DANYCH (Sposób weryfikacji poprawności zestawień przed wysyłką do płatnika, unikanie korekt)",
-            "OBCIĄŻENIE MEDYKÓW (Czy sprawy raportowe są wydzielone, czy zrzucone na personel medyczny)"
+            "DOKUMENTACJA (Czy obieg dokumentów bywa uciążliwy przy zamknięciu miesiąca)",
+            "ZMIANY REGULACYJNE (Czy nowe zasady NFZ komplikują bieżącą sprawozdawczość)",
+            "WYDAJNOŚĆ (Czy personel odczuwa duże obciążenie administracyjne)",
+            "KOORDYNACJA (Wyzwania z synchronizacją danych między poradniami / lokalizacjami)",
+            "CYFRYZACJA (Czy systemy gabinetowe obsługują wszystkie wymogi raportowe, czy coś trzeba robić ręcznie)",
+            "PROGRAMY NFZ (Czy placówka wykorzystuje pełen zakres programów dostępnych w ramach kontraktu)",
+            "PERSPEKTYWA BRANŻOWA (Jak placówki podobnej skali radzą sobie z administracją — obserwacja ogólna)"
         ])
         
         forced_cta_type = random.choice([
-            "TYP 'KTO': Zapytaj kto u nich odpowiada za wyżej wymieniony proces (rola/zespół).",
-            "TYP 'JAK': Zapytaj wprost, jak organizacyjnie rozwiązali wyżej wymieniony problem.",
-            "TYP 'WERYFIKACJA': Zapytaj, czy ten konkretny element jest u nich systematycznie weryfikowany.",
-            "TYP 'DOŚWIADCZENIE': Zapytaj, czy z ich perspektywy to temat wymagający dużego zaangażowania.",
-            "TYP 'WYDZIELONA FUNKCJA': Zapytaj, czy ta funkcja jest wydzielona administracyjnie, czy to dodatkowy obowiązek.",
-            "TYP 'CZĘSTOTLIWOŚĆ': Zapytaj, czy analizują to na bieżąco, czy raczej sporadycznie."
+            "TYP 'WYMIANA MYŚLI': Zapytaj, czy byliby otwarci na krótką, niezobowiązującą wymianę doświadczeń w tym zakresie.",
+            "TYP 'OPINIA': Zapytaj, jak oni z perspektywy swojej przychodni oceniają to zjawisko.",
+            "TYP 'CZY TO TEMAT': Zapytaj, czy w ich przypadku to też obszar, który potrafi być wyzwaniem.",
+            "TYP 'PRIORYTETY': Zapytaj, czy optymalizacja tego procesu to temat, o którym obecnie myślą w placówce.",
+            "TYP 'SPOSTRZEZENIE': Podziel się krótką obserwacją branżową i zapytaj czy to rezonuje z ich doświadczeniem.",
+            "TYP 'TREND': Zapytaj, czy zauważają dany trend w branży (np. rosnące wymagania dokumentacyjne) i jak na niego reagują."
         ])
 
         forced_subject_type = random.choice([
-            "Temat jako nazwa podprocesu (np. 'Obieg dokumentacji', 'Koordynacja systemów')",
-            "Temat jako wyzwanie infrastrukturalne (np. 'Integracja systemów', 'Tagowanie wizyt')",
-            "Temat jako konkretny wskaźnik/dane (np. 'Zestawienia dla NFZ', 'Bieżący przegląd kontraktu')",
-            "Temat jako funkcja w zespole (np. 'Zarządzanie sprawozdawczością', 'Rozkład obowiązków')"
+            "Temat jako otwarte pytanie branżowe (np. 'Sprawozdawczość a praktyka', 'Obieg danych w przychodni')",
+            "Temat jako nawiązanie do zmian (np. 'Wymogi NFZ a codzienność', 'Nowe zasady raportowania')",
+            "Temat jako nazwa podprocesu (np. 'Obieg dokumentacji', 'Koordynacja rozliczeń')",
+            "Temat jako wyzwanie infrastrukturalne (np. 'Integracja systemów', 'Zamknięcie miesiąca')"
         ])
 
         if step == 1:
@@ -1147,12 +1149,21 @@ nie przez ofertę. Każdy mail to zapytanie o doświadczenia — NIE informacja 
 === RÓŻNORODNOŚĆ (KRYTYCZNE) ===
 Każdy mail MUSI mieć INNY kąt ataku. NIE pisz co mail o "rozliczeniach NFZ" w tej samej strukturze.
 Rotuj między tymi OSIAMI TEMATYCZNYMI:
-1. ZESPÓŁ/KADRY — kto u nich odpowiada za dany proces, jaki jest podział ról
+1. DOKUMENTACJA — obieg danych, zamknięcie miesiąca, ilość zestawień
 2. ZMIANY REGULACYJNE — nowe wymogi NFZ, zmiany w prawie, terminy
-3. DOKUMENTACJA — obieg dokumentów, systemy gabinetowe, integracja
-4. KONTROLA/AUDYT — doświadczenia z kontrolą NFZ, przygotowanie, ryzyka
-5. OPTYMALIZACJA — niewykorzystane środki, dodatkowe programy, nowe możliwości
+3. WYDAJNOŚĆ ADMINISTRACJI — obciążenie administracyjne, automatyzacja vs praca ręczna
+4. PROGRAMY I KONTRAKT — pełne wykorzystanie dostępnych programów, optymalizacja kontraktu
+5. CYFRYZACJA — systemy gabinetowe, integracja, dane
+
 Każde CTA musi być SEMANTYCZNIE INNE — nie przepisuj tego samego pytania innymi słowami.
+⛔ ABSOLUTNY ZAKAZ pytań audytorskich typu:
+  - "Kto u Państwa odpowiada za..." → brzmi jak kontrola NIK
+  - "Czy ta funkcja jest wydzielona..." → zbyt wnikliwe na pierwszy kontakt
+  - "Czy weryfikują Państwo poprawność..." → sugeruje że robią błędy
+✅ DOZWOLONE pytania partnerskie:
+  - "Czy w Państwa przypadku to też bywa wyzwaniem?" → równieśnicy
+  - "Czy to temat, nad którym Państwo się pochylają?" → szacunek
+  - "Jak Państwo oceniają to z perspektywy swojej placówki?" → opinia
 ZAKAZANE: pisanie 5 maili pod rząd z tym samym schematem "Placówki [typ] prowadzące [usługi] mają [problem]. Czy to temat?"
 
 === 🛑 ZERO HALUCYNACJI — TWARDY FAKT 🛑 ===

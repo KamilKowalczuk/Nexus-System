@@ -1,19 +1,47 @@
 services:
+  # 0. BAZA DANYCH (PostgreSQL) — lokalnie do testów
+  # PRODUKCJA: zakomentuj ten blok — Railway dostarcza DB przez DATABASE_URL w .env
+  # TESTY LOKALNE: odkomentuj i zmień w .env: DATABASE_URL=postgresql://nexus:nexus_password@localhost:5432/agency_os
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: agency_db
+  #   restart: always
+  #   environment:
+  #     POSTGRES_USER: nexus
+  #     POSTGRES_PASSWORD: nexus_password
+  #     POSTGRES_DB: agency_os
+  #   ports:
+  #     - "127.0.0.1:5432:5432"
+  #   volumes:
+  #     - ./data/postgres:/var/lib/postgresql/data
+  #   networks:
+  #     - agency_net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U nexus -d agency_os"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 10
+  #     start_period: 10s
+
+  # 1. KOLEJKA (Redis) — tylko lokalnie, nie wystawiony na zewnątrz
   redis:
     image: redis:7-alpine
     container_name: agency_redis
     restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - ./data/redis:/data
     networks:
       - agency_net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 5s
 
+  # 2. SILNIK NEXUS (dashboard + silnik uruchamiany z GUI)
   nexus:
     build: .
     container_name: agency_nexus
@@ -21,21 +49,36 @@ services:
     env_file:
       - .env
     environment:
-      REDIS_HOST: redis
+      # DATABASE_URL NIE jest tutaj — brana z .env (Railway lub lokalny Postgres)
+      # Redis jest lokalny w tej sieci Dockera
+      REDIS_HOST: "redis"
     depends_on:
+      # postgres:              # odkomentuj jeśli używasz lokalnego Postgresa (blok postgres wyżej)
+      #   condition: service_healthy
       redis:
         condition: service_healthy
+    ports:
+      - "8501:8501"
+      - "8000:8000"
     volumes:
-      - ./files:/app/files
+      - ./files:/app/files # pliki, załączniki, backupy (backup_manager pisze tu)
     networks:
       - agency_net
-      - postgres_net
-      - debian_default
+  # # 3. GUI BAZY DANYCH (NocoDB) — łączy się z Railway przez DATABASE_URL z .env
+  # nocodb:
+  #   image: nocodb/nocodb:latest
+  #   container_name: agency_nocodb
+  #   restart: always
+  #   ports:
+  #     - "127.0.0.1:8080:8080"
+  #   environment:
+  #     NC_DB: "${NC_DB}"
+  #     NC_HOST: "0.0.0.0"
+  #     NC_PORT: "8080"
+  #     NC_ALLOW_ORIGIN: "*"
+  #   networks:
+  #     - agency_net
 
 networks:
   agency_net:
     driver: bridge
-  postgres_net:
-    external: true
-  debian_default:
-    external: true
