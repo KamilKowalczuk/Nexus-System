@@ -362,6 +362,12 @@ async def websocket_logs(websocket: WebSocket, token: str = Query(None)):
         while True:
             line = log_file.readline()
             if not line:
+                # Sprawdź czy plik nie został obcięty (engine restart)
+                current_pos = log_file.tell()
+                file_size = os.path.getsize(LOG_FILE)
+                if current_pos > file_size:
+                    # Plik został obcięty — wracamy na początek
+                    log_file.seek(0)
                 await asyncio.sleep(0.5)
                 continue
             await websocket.send_text(line)
