@@ -212,7 +212,8 @@ def verify_email_deep(email: str) -> str:
 
         else:
             status_code = response.status_code
-            logger.warning(f"⚠️ DeBounce API HTTP Error: {status_code}")
+            resp_text = response.text[:300] if response.text else "EMPTY"
+            logger.warning(f"⚠️ DeBounce API HTTP Error: {status_code} | Body: {resp_text}")
             if status_code == 402:
                 # Brak kredytów — natychmiastowy stop, nie czekamy na próg
                 critical_monitor.trigger_stop(
@@ -220,6 +221,8 @@ def verify_email_deep(email: str) -> str:
                     reason="DeBounce API zwróciło HTTP 402 — wyczerpane kredyty. Wysyłka wstrzymana.",
                     consecutive=1,
                 )
+            elif status_code in (401, 403):
+                logger.error(f"🔑 DeBounce AUTH ERROR ({status_code}) — sprawdź DEBOUNCE_API_KEY w .env! Klucz musi mieć 13 znaków.")
             else:
                 critical_monitor.record_failure("debounce")
             return "API_DOWN"
