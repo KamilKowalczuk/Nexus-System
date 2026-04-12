@@ -29,4 +29,4 @@ RUN uv run crawl4ai-setup
 # Kopiowanie reszty kodu
 COPY . .
 
-CMD ["uv", "run", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uv run python init_db.py && uv run uvicorn api:app --host 0.0.0.0 --port 8000"]
