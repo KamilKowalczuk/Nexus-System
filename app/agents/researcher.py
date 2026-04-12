@@ -1096,57 +1096,7 @@ Zwróć TYLKO to jedno słowo."""
 
     print(f"      ✅ GATEKEEPER: Firma zatwierdzona. {gk_reason}")
 
-    # 2c. FACT CHECKER ZEWNĘTRZNY DLA ICEBREAKERA (Weryfikacja w Sieci)
-    if research.icebreaker and research.icebreaker.strip() not in ("Brak", "NULL", "None", ""):
-        print(f"      🕵️ FACT CHECK (Internet): Weryfikuję aktualność: {research.icebreaker}")
-        search_query = f"{company.name} {research.icebreaker} aktualne {current_year}"
-        
-        try:
-            search_results = _run_async_safe(scraper.search(search_query))
-            if search_results and len(search_results) > 10:
-                fact_check_prompt = f"""Dziś jest {current_date_str}.
-Icebreaker ze strony firmy {company.name}: "{research.icebreaker}"
-
-Oto wyniki wyszukiwania w Google:
-{search_results}
-
-Czy ten temat/program/inicjatywa OFICJALNIE DZIAŁA w {current_year} roku w Polsce?
-- Jeśli to program NFZ/rządowy/UE — sprawdź czy jest w aktualnym wykazie, czy nie został wycofany, zawieszony lub zastąpiony innym.
-- Jeśli to inicjatywa/wydarzenie — sprawdź czy jest aktualna, nie historyczna.
-
-Nadawca specjalizuje się w rozliczeniach NFZ — MUSI wiedzieć które programy działają. Wymienienie martwego programu jest NIEPROFESJONALNE.
-
-Zwróć TYLKO słowo 'VALID' jeśli program/temat oficjalnie działa w {current_year}.
-Zwróć 'INVALID' jeśli program zakończono, wstrzymano, zastąpiono lub jest stary."""
-                
-                fc_llm = create_llm(DEFAULT_MODEL, temperature=0.0)
-                fc_resp = fc_llm.invoke([HumanMessage(content=fact_check_prompt)])
-                # Bezpieczne wyciągnięcie tekstu — content może być str lub list
-                fc_text = fc_resp.content if isinstance(fc_resp.content, str) else str(fc_resp.content)
-                
-                if "INVALID" in fc_text.upper():
-                    print(f"      🚫 FACT CHECK OBLANY: Icebreaker nieaktualny! Uogólniam...")
-                    # Zamiast 'Brak' — uogólniamy inteligentnie
-                    generalize_prompt = f"""Icebreaker '{research.icebreaker}' okazał się NIEAKTUALNY (program/inicjatywa nie działa w {current_year}).
-Firma: {company.name}. Branża firmy: {research.summary}.
-Nadawca: {client_name} — oferuje: {client_value_prop[:200]}
-
-Napisz JEDNO zdanie icebreakera które:
-1. Uogólnia temat (np. zamiast 'program Profilaktyka 40+' → 'Państwa zaangażowanie w programy profilaktyczne')
-2. Łączy to z ofertą nadawcy
-3. Nie wspomina konkretnej nazwy programu/inicjatywy która już nie działa
-4. Brzmi naturalnie i profesjonalnie
-
-Zwróć TYLKO jedno zdanie, nic więcej."""
-                    gen_llm = create_llm(DEFAULT_MODEL, temperature=0.3)
-                    gen_resp = gen_llm.invoke([HumanMessage(content=generalize_prompt)])
-                    gen_text = gen_resp.content if isinstance(gen_resp.content, str) else str(gen_resp.content)
-                    research.icebreaker = gen_text.strip().strip('"').strip("'")
-                    print(f"      🔄 UOGÓLNIONY ICEBREAKER: {research.icebreaker}")
-                else:
-                    print(f"      ✅ FACT CHECK ZDANY.")
-        except Exception as e:
-            logger.error(f"      ❌ Błąd w FactChecker (Internet): {e}")
+    # NOTE: Fact-check skonsolidowany w _fact_check_with_ddg() (krok 2b).
 
     # 3. SCORING & SELECTION
     _raw_combined = list(set((research.contact_emails or []) + regex_emails))
