@@ -1277,11 +1277,11 @@ try:
                     companies_cached = cache_stats.get("companies_cached", 0)
                     
                     DEBOUNCE_COST = 0.25
-                    FIRECRAWL_COST = 0.10
+                    # Crawl4AI = darmowy (lokalny) — brak kosztu scrapingu
                     
                     email_savings = emails_cached * DEBOUNCE_COST
-                    scraping_savings = companies_cached * FIRECRAWL_COST
-                    total_savings = email_savings + scraping_savings
+                    scraping_savings = 0.0  # Crawl4AI jest darmowy
+                    total_savings = email_savings
                     
                     col_s1, col_s2, col_s3 = st.columns(3)
                     
@@ -1367,10 +1367,10 @@ try:
                         st.caption(f"DeBounce: {db_count}/10 per min")
                     
                     with col_a2:
-                        fc_count = api_usage.get("firecrawl", 0)
+                        fc_count = api_usage.get("crawl4ai", 0)
                         fc_limit = 5
                         st.progress(fc_count / fc_limit if fc_limit > 0 else 0)
-                        st.caption(f"Firecrawl: {fc_count}/5 per min")
+                        st.caption(f"Crawl4AI: {fc_count}/5 per min (FREE)")
                     
                     with col_a3:
                         ap_count = api_usage.get("apify", 0)

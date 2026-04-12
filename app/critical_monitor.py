@@ -2,7 +2,7 @@
 """
 NEXUS CRITICAL API MONITOR — nadzór nad kluczowymi serwisami zewnętrznymi.
 
-Śledzi awarie DeBounce, Firecrawl, Apify.
+Śledzi awarie DeBounce, Crawl4AI, Apify.
 Gdy awaria jest krytyczna (billing 402, zbyt wiele timeoutów) → zapisuje flag file
 i wysyła alert email. Silnik main.py czyta flag file na początku każdej iteracji
 i zatrzymuje się jeśli flaga jest ustawiona.
@@ -28,7 +28,7 @@ _FLAG_FILE = Path(__file__).parent.parent / ".critical_stop"
 # Progi kolejnych błędów przed uznaniem za krytyczne
 _THRESHOLDS = {
     "debounce":  5,   # 5 kolejnych API_DOWN → stop
-    "firecrawl": 5,   # 5 kolejnych błędów → stop (402 = natychmiastowy stop)
+    "crawl4ai":  5,   # 5 kolejnych błędów headless browser → stop
     "apify":     8,   # 8 kolejnych błędów → stop (Apify jest mniej krytyczny)
 }
 
@@ -36,7 +36,7 @@ _THRESHOLDS = {
 _lock = threading.Lock()
 _consecutive_failures: dict[str, int] = {
     "debounce":  0,
-    "firecrawl": 0,
+    "crawl4ai":  0,
     "apify":     0,
 }
 
@@ -179,15 +179,15 @@ _ALERT_MESSAGES = {
         "  2. Zaloguj się do panelu NEXUS\n"
         "  3. Kliknij 'URUCHOM' — silnik sam się wyczyści i ruszy"
     ),
-    "firecrawl": (
-        "Firecrawl API nie odpowiada lub wyczerpały się kredyty (HTTP 402).\n\n"
+    "crawl4ai": (
+        "Crawl4AI (lokalny headless browser) nie działa.\n\n"
         "Możliwe przyczyny:\n"
-        "  - Wyczerpane kredyty → zaloguj się na firecrawl.dev i doładuj\n"
-        "  - Nieprawidłowy klucz API → sprawdź FIRECRAWL_API_KEY w .env\n"
-        "  - Chwilowa awaria → sprawdź status.firecrawl.dev\n\n"
+        "  - Brak pamięci RAM na serwerze → sprawdź 'docker stats'\n"
+        "  - Playwright/Chromium crash → zrestartuj kontener\n"
+        "  - Timeout na zbyt dużych stronach\n\n"
         "Silnik NEXUS zatrzymał się. Scraping stron firmowych jest wstrzymany.\n\n"
         "Jak wznowić:\n"
-        "  1. Rozwiąż problem z Firecrawl\n"
+        "  1. Sprawdź logi kontenera\n"
         "  2. Zaloguj się do panelu NEXUS\n"
         "  3. Kliknij 'URUCHOM'"
     ),

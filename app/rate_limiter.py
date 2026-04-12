@@ -17,7 +17,7 @@ class RateLimiter:
     """
     Unified rate limiting for:
     - Email sending (SendGrid daily/hourly limits)
-    - API calls (DeBounce, Firecrawl, etc.)
+    - API calls (DeBounce, Crawl4AI, etc.)
     - Adaptive throttling based on responses
     """
     
@@ -31,7 +31,7 @@ class RateLimiter:
     
     # API limits (per minute to avoid 429s)
     DEBOUNCE_PER_MINUTE = 10
-    FIRECRAWL_PER_MINUTE = 5
+    CRAWL4AI_PER_MINUTE = 5       # Concurrent browser limit (local)
     APIFY_PER_MINUTE = 10
     
     # Adaptive delays (seconds)
@@ -212,7 +212,7 @@ class RateLimiter:
         """
         limits = {
             "debounce": self.DEBOUNCE_PER_MINUTE,
-            "firecrawl": self.FIRECRAWL_PER_MINUTE,
+            "crawl4ai": self.CRAWL4AI_PER_MINUTE,
             "apify": self.APIFY_PER_MINUTE,
         }
         
@@ -230,7 +230,7 @@ class RateLimiter:
         Record API call and return current count.
         
         Args:
-            api_name: "debounce", "firecrawl", "apify"
+            api_name: "debounce", "crawl4ai", "apify"
         
         Returns:
             Current count this minute
@@ -276,13 +276,13 @@ class RateLimiter:
             {
                 "global_daily": 45,
                 "sendgrid_usage_percent": 9.0,
-                "api_usage": {"debounce": 3, "firecrawl": 1}
+                "api_usage": {"debounce": 3, "crawl4ai": 1}
             }
         """
         global_daily = self.get_global_emails_sent_today()
         
         api_usage = {}
-        for api in ["debounce", "firecrawl", "apify"]:
+        for api in ["debounce", "crawl4ai", "apify"]:
             key = f"api:{api}:per_minute"
             api_usage[api] = self.cache.get_rate_limit(key)
         

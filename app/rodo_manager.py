@@ -197,7 +197,7 @@ def is_domain_opted_out(session: Session, domain: str) -> bool:
 
     Wywoływana:
     - scout.py: przed dodaniem firmy do bazy (oszczędzamy lead slot)
-    - researcher.py: przed Firecrawl (oszczędzamy kredyt API)
+    - researcher.py: przed Crawl4AI (oszczędzamy zasoby serwera)
 
     Args:
         session: Sesja SQLAlchemy.

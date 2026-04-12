@@ -22,6 +22,10 @@ COPY pyproject.toml uv.lock ./
 # Instalacja zależności z locked versions z uv.lock (deterministyczny build)
 RUN uv sync --frozen --no-dev
 
+# Crawl4AI: Instalacja headless Chromium do scrapowania stron
+# (zastępuje płatny Firecrawl API — oszczędność $50-100/mc)
+RUN uv run crawl4ai-setup
+
 # Kopiowanie reszty kodu
 COPY . .
 

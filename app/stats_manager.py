@@ -94,7 +94,7 @@ def increment_blacklisted(session: Session, client_id: int, count: int = 1) -> N
 # ---------------------------------------------------------------------------
 
 def increment_analyzed(session: Session, client_id: int, count: int = 1) -> None:
-    """Lead przeanalizowany przez Researcher (Firecrawl)."""
+    """Lead przeanalizowany przez Researcher (Crawl4AI)."""
     _upsert_increment(session, client_id, "leads_analyzed", count)
 
 def increment_emails_found(session: Session, client_id: int, count: int = 1) -> None:

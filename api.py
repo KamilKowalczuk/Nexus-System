@@ -819,15 +819,15 @@ def phase2_cache(api_key: str = Security(get_api_key)):
         emails_cached = email_stats.get("total_cached", 0)
         companies_cached = cache_stats.get("companies_cached", 0)
         DEBOUNCE_COST = 0.25
-        FIRECRAWL_COST = 0.10
+        CRAWL4AI_COST = 0.0  # Crawl4AI = darmowy (lokalny headless browser)
         
         return {
             "cache_stats": cache_stats,
             "email_stats": email_stats,
             "cost_savings": {
                 "email_savings": round(emails_cached * DEBOUNCE_COST, 2),
-                "scraping_savings": round(companies_cached * FIRECRAWL_COST, 2),
-                "total_savings": round(emails_cached * DEBOUNCE_COST + companies_cached * FIRECRAWL_COST, 2),
+                "scraping_savings": 0.0,  # Crawl4AI jest darmowy
+                "total_savings": round(emails_cached * DEBOUNCE_COST, 2),
             }
         }
     except Exception as e:

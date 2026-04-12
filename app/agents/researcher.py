@@ -1,7 +1,7 @@
 # app/agents/researcher.py
 """
-RESEARCHER V4: BULLDOZER + DEBOUNCE VERIFIER
-NOW WITH: Redis cache for Firecrawl results (save $200/mc!)
+RESEARCHER V5: BULLDOZER + DEBOUNCE VERIFIER
+NOW WITH: Crawl4AI (darmowy lokalny scraping) + Redis cache + DuckDuckGo search
 """
 
 import os
@@ -38,11 +38,8 @@ logger = logging.getLogger("researcher")
 
 load_dotenv()
 
-# Konfiguracja API
-firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
-
-if not firecrawl_key:
-    logger.error("❌ CRITICAL: Brak FIRECRAWL_API_KEY w .env. Researcher nie zadziała.")
+# Konfiguracja API — Crawl4AI (darmowy, lokalny)
+# Firecrawl API key nie jest już potrzebny — scraping odbywa się lokalnie przez Crawl4AI
 
 # --- NARZĘDZIA POMOCNICZE ---
 
@@ -149,102 +146,148 @@ def extract_emails_from_html(raw_html: str) -> list:
 
 
 class TitanScraper:
-    """Klient Firecrawl - Tryb Async (HTTPX)."""
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.base_url = "https://api.firecrawl.dev/v1"
-        self.headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-
-    async def scrape(self, url): 
-        if not self.api_key: return None
-        
-        endpoint = f"{self.base_url}/scrape"
-        payload = {
-            "url": url, 
-            "formats": ["markdown", "html"], 
-            "onlyMainContent": False, 
-            "timeout": 20000,
-            "excludeTags": ["script", "style", "video", "canvas"] 
-        }
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                response = await client.post(endpoint, headers=self.headers, json=payload)
-                if response.status_code == 200:
-                    data = response.json().get('data', {})
-                    if not data.get('markdown') and not data.get('html'):
-                        return None
-                    critical_monitor.record_success("firecrawl")
-                    return {
-                        "markdown": data.get('markdown', ""),
-                        "html": data.get('html', "")
-                    }
-                elif response.status_code == 429:
-                    logger.warning(f"⚠️ RATE LIMIT (429) dla {url}. Zwalniam...")
-                    return None
-                elif response.status_code in (402, 401):
-                    # Brak kredytów lub nieprawidłowy klucz — natychmiastowy stop
-                    critical_monitor.trigger_stop(
-                        api_name="firecrawl",
-                        reason=f"Firecrawl API zwróciło HTTP {response.status_code} — "
-                               f"{'wyczerpane kredyty' if response.status_code == 402 else 'nieprawidłowy klucz API'}.",
-                        consecutive=1,
-                    )
-                    return None
-                else:
-                    critical_monitor.record_failure("firecrawl")
-                    return None
-            except Exception as e:
-                logger.error(f"Błąd scrapowania {url}: {e}")
-                critical_monitor.record_failure("firecrawl")
+    """Klient Crawl4AI — darmowy, lokalny scraping z headless Chromium."""
+    
+    def __init__(self):
+        self._crawler = None
+        self._browser_config = None
+        self._run_config = None
+    
+    async def _ensure_crawler(self):
+        """Lazy init — uruchamiamy przeglądarkę dopiero przy pierwszym użyciu."""
+        if self._crawler is None:
+            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+            self._browser_config = BrowserConfig(
+                headless=True,
+                verbose=False,
+                text_mode=True,  # Tryb tekstowy — nie pobiera obrazów/css (szybszy)
+            )
+            self._run_config = CrawlerRunConfig(
+                cache_mode=CacheMode.BYPASS,
+                page_timeout=25000,
+                excluded_tags=["script", "style", "video", "canvas", "svg", "noscript"],
+                wait_until="domcontentloaded",
+            )
+            self._crawler = AsyncWebCrawler(config=self._browser_config)
+            await self._crawler.__aenter__()
+            logger.info("🚀 Crawl4AI: Headless browser uruchomiony")
+    
+    async def scrape(self, url) -> dict | None:
+        """Scrapuj pojedynczą stronę — zwraca {markdown, html} lub None."""
+        await self._ensure_crawler()
+        try:
+            result = await self._crawler.arun(url=url, config=self._run_config)
+            if not result.success:
+                logger.warning(f"⚠️ Crawl4AI FAIL: {url} — {result.error_message}")
                 return None
-
-    async def map_site(self, url): 
-        if not self.api_key: return []
+            
+            md = ""
+            html_content = result.html or ""
+            
+            # Crawl4AI v0.8.x: result.markdown może być obiektem MarkdownGenerationResult
+            if result.markdown:
+                if isinstance(result.markdown, str):
+                    md = result.markdown
+                elif hasattr(result.markdown, 'raw_markdown'):
+                    md = result.markdown.raw_markdown or ""
+                else:
+                    md = str(result.markdown)
+            
+            if not md and not html_content:
+                return None
+            
+            critical_monitor.record_success("crawl4ai")
+            return {"markdown": md, "html": html_content}
         
-        endpoint = f"{self.base_url}/map"
-        payload = {"url": url, "search": "contact about team career kontakt o-nas zespol kariera"}
+        except Exception as e:
+            logger.error(f"Błąd scrapowania {url}: {e}")
+            critical_monitor.record_failure("crawl4ai")
+            return None
+    
+    async def scrape_many(self, urls: list) -> list:
+        """Batch scraping wielu stron — Crawl4AI arun_many z memory-adaptive dispatcher."""
+        await self._ensure_crawler()
+        from crawl4ai import CrawlerRunConfig, CacheMode
         
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            try:
-                response = await client.post(endpoint, headers=self.headers, json=payload)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get('links', []) or data.get('data', {}).get('links', [])
-                return []
-            except:
-                return []
+        run_conf = CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS,
+            page_timeout=25000,
+            excluded_tags=["script", "style", "video", "canvas", "svg", "noscript"],
+            wait_until="domcontentloaded",
+        )
+        
+        try:
+            results = await self._crawler.arun_many(urls, config=run_conf)
+            return results
+        except Exception as e:
+            logger.error(f"Błąd batch scrapowania: {e}")
+            return []
 
-    async def search(self, query): 
-        if not self.api_key: return ""
-        endpoint = f"{self.base_url}/search"
-        payload = {"query": query, "limit": 3}
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            try:
-                response = await client.post(endpoint, headers=self.headers, json=payload)
-                if response.status_code == 200:
-                    raw = response.json()
-                    # Firecrawl Search API zwraca albo {"data": [...]} albo bezpośrednio [...]
-                    if isinstance(raw, dict):
-                        data = raw.get('data', [])
-                    elif isinstance(raw, list):
-                        data = raw
-                    else:
-                        return ""
-                    if not data:
-                        return ""
-                    snippets = []
-                    for d in data:
-                        if isinstance(d, dict):
-                            snippets.append(f"- {d.get('title', '')}: {d.get('description', '')}")
-                        elif isinstance(d, str):
-                            snippets.append(f"- {d}")
-                    return "\n".join(snippets)
-                return ""
-            except:
-                return ""
+    async def map_site(self, url) -> list:
+        """Mapowanie linków strony — scrapujemy homepage i wyciągamy <a href>."""
+        result = await self.scrape(url)
+        if not result or not result.get("html"):
+            return []
+        
+        raw_html = result["html"]
+        href_pattern = r'<a[^>]+href=["\']([^"\'#]+)["\']'
+        all_hrefs = re.findall(href_pattern, raw_html, re.IGNORECASE)
+        
+        # Filtruj: tylko wewnętrzne linki, bez plików statycznych
+        from urllib.parse import urlparse
+        base_domain = urlparse(url).netloc
+        links = []
+        seen = set()
+        
+        for href in all_hrefs:
+            if href.startswith("mailto:") or href.startswith("tel:"):
+                continue
+            if any(ext in href.lower() for ext in ['.pdf','.jpg','.png','.css','.js','.svg','.ico']):
+                continue
+            
+            # Zbuduj pełny URL
+            if href.startswith("/"):
+                full = f"https://{base_domain}{href}"
+            elif href.startswith("http"):
+                if base_domain not in href:
+                    continue
+                full = href
+            else:
+                full = f"{url.rstrip('/')}/{href}"
+            
+            if full not in seen:
+                links.append(full)
+                seen.add(full)
+        
+        return links
 
-scraper = TitanScraper(firecrawl_key)
+    async def search(self, query) -> str:
+        """Wyszukiwanie w internecie — DuckDuckGo (darmowy, bez klucza API)."""
+        try:
+            from ddgs import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=5))
+            snippets = []
+            for r in results:
+                title = r.get('title', '')
+                body = r.get('body', '')
+                snippets.append(f"- {title}: {body}")
+            return "\n".join(snippets)
+        except Exception as e:
+            logger.warning(f"⚠️ DuckDuckGo search failed: {e}")
+            return ""
+    
+    async def close(self):
+        """Zamknij przeglądarkę."""
+        if self._crawler:
+            try:
+                await self._crawler.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._crawler = None
+            logger.info("🛑 Crawl4AI: Headless browser zamknięty")
+
+scraper = TitanScraper()
 
 
 def _run_async_safe(coro, timeout: int = 120):
@@ -266,37 +309,44 @@ async def _parallel_scrape(urls: list) -> dict:
     
     urls = list(set(urls))
     
-    print(f"         🚀 Uruchamiam {len(urls)} zadań async scrapingowych (z opóźnieniem)...")
+    print(f"         🚀 Uruchamiam Crawl4AI batch scraping ({len(urls)} stron)...")
     
-    tasks = []
-    for url in urls:
-        # Dodajemy opóźnienie 1s, żeby nie uderzyć w 5 endpointów w 1ms
-        tasks.append(scraper.scrape(url))
-        await asyncio.sleep(1.0) # <--- RATE LIMIT FIX (1s delay)
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Crawl4AI scrape_many — wbudowany memory-adaptive dispatcher
+    batch_results = await scraper.scrape_many(urls)
     
-    for i, result in enumerate(results):
-        url = urls[i]
+    for i, crawl_result in enumerate(batch_results):
+        url = urls[i] if i < len(urls) else "unknown"
         
-        if isinstance(result, Exception):
-            logger.error(f"Błąd zadania {url}: {result}")
+        if isinstance(crawl_result, Exception):
+            logger.error(f"Błąd zadania {url}: {crawl_result}")
             continue
+        
+        # Crawl4AI zwraca CrawlResult — wyciągamy markdown i html
+        if not crawl_result or not crawl_result.success:
+            continue
+        
+        html_content = crawl_result.html or ""
+        if html_content:
+            found = extract_emails_from_html(html_content)
+            if found:
+                print(f"            👀 Znaleziono w HTML ({url}): {found}")
+                all_html_emails.extend(found)
+        
+        md = ""
+        if crawl_result.markdown:
+            if isinstance(crawl_result.markdown, str):
+                md = crawl_result.markdown
+            elif hasattr(crawl_result.markdown, 'raw_markdown'):
+                md = crawl_result.markdown.raw_markdown or ""
+            else:
+                md = str(crawl_result.markdown)
+        
+        if len(md) > 50:
+            section_name = "STRONA"
+            if "contact" in url or "kontakt" in url: section_name = "KONTAKT"
+            elif "about" in url or "o-nas" in url: section_name = "O NAS"
             
-        if result:
-            if result.get("html"):
-                found = extract_emails_from_html(result["html"])
-                if found:
-                    print(f"            👀 Znaleziono w HTML ({url}): {found}")
-                    all_html_emails.extend(found)
-            
-            md = result.get("markdown", "")
-            if len(md) > 50:
-                section_name = "STRONA"
-                if "contact" in url or "kontakt" in url: section_name = "KONTAKT"
-                elif "about" in url or "o-nas" in url: section_name = "O NAS"
-                
-                combined_markdown += f"\n\n=== {section_name} ({url}) ===\n{md[:15000]}"
+            combined_markdown += f"\n\n=== {section_name} ({url}) ===\n{md[:15000]}"
                 
     return {
         "markdown": combined_markdown,
@@ -365,7 +415,7 @@ async def _get_content_titan_strategy(url: str, domain: str) -> dict:
             logger.info(f"⚠️ CACHE INVALIDATED ({reason}): {domain} → re-scraping")
             cache_manager.delete_company_scraping(domain)
     
-    logger.info(f"💸 CACHE MISS: {domain} → calling Firecrawl API")
+    logger.info(f"💸 CACHE MISS: {domain} → calling Crawl4AI (local)")
     
     # ==========================================
     # STEP 2: NO CACHE - DO ACTUAL SCRAPING
