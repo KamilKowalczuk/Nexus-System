@@ -1285,6 +1285,8 @@ Kategoria 3b — powtarzalne formuły (bot-markers przez monotonię):
 "Obe ścieżki mają swoje konsekwencje" — ZAKAZANE. Puste stwierdzenie.
 "rosną z roku na rok" / "rosnące wymagania" — użyj MAX RAZ na 5 maili.
 "Ciekawi mnie, jak to wygląda u Państwa" — ZAKAZANE. Brzmi fałszywie.
+"Czy Państwo również zauważają ten trend?" — użyj MAX RAZ na 5 maili. To CTA-default modelu — ROTUJ z innymi.
+"Czy to bywa wyzwaniem?" / "bywa dla Państwa wyzwaniem" — użyj MAX RAZ na 5 maili.
 
 Kategoria 4 — angielskie kalki (marker AI w polskim tekście):
 "zostawiać pieniądze na stole", "nie zostawia pieniędzy na stole",
