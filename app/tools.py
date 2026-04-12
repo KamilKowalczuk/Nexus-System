@@ -237,7 +237,10 @@ def verify_email_deep(email: str) -> str:
                 continue
             logger.error(f"⏱️ DeBounce API timeout for {email} (po {max_retries} próbach)")
             critical_monitor.record_failure("debounce")
-            return "API_DOWN"
+            # Fallback: MX check zamiast blokowania leada
+            logger.info(f"🔄 Fallback MX check dla {email}...")
+            mx_ok = verify_email_mx(email)
+            return "OK" if mx_ok else "INVALID"
         except Exception as e:
             logger.error(f"❌ DeBounce API error for {email}: {e}")
             # Fallback to MX check

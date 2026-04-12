@@ -176,7 +176,11 @@ class TitanScraper:
         """Scrapuj pojedynczą stronę — zwraca {markdown, html} lub None."""
         await self._ensure_crawler()
         try:
-            result = await self._crawler.arun(url=url, config=self._run_config)
+            # Hard timeout 30s — Playwright page_timeout nie zawsze działa
+            result = await asyncio.wait_for(
+                self._crawler.arun(url=url, config=self._run_config),
+                timeout=30
+            )
             if not result.success:
                 logger.warning(f"⚠️ Crawl4AI FAIL: {url} — {result.error_message}")
                 return None
@@ -199,6 +203,10 @@ class TitanScraper:
             critical_monitor.record_success("crawl4ai")
             return {"markdown": md, "html": html_content}
         
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Crawl4AI HARD TIMEOUT (30s): {url}")
+            critical_monitor.record_failure("crawl4ai")
+            return None
         except Exception as e:
             logger.error(f"Błąd scrapowania {url}: {e}")
             critical_monitor.record_failure("crawl4ai")
@@ -217,8 +225,15 @@ class TitanScraper:
         )
         
         try:
-            results = await self._crawler.arun_many(urls, config=run_conf)
+            # Hard timeout 60s dla batcha
+            results = await asyncio.wait_for(
+                self._crawler.arun_many(urls, config=run_conf),
+                timeout=60
+            )
             return results
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Crawl4AI BATCH TIMEOUT (60s) dla {len(urls)} URL")
+            return []
         except Exception as e:
             logger.error(f"Błąd batch scrapowania: {e}")
             return []
