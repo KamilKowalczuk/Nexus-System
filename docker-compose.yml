@@ -1,0 +1,41 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: agency_redis
+    restart: always
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - agency_net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  nexus:
+    build: .
+    container_name: agency_nexus
+    restart: always
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./files:/app/files
+    networks:
+      - agency_net
+      - postgres_net
+      - debian_default
+
+networks:
+  agency_net:
+    driver: bridge
+  postgres_net:
+    external: true
+  debian_default:
+    external: true

@@ -59,6 +59,3 @@ Thumbs.db
 .idea/
 .vscode/
 nexusagent-page/
-
-docker-compose.yml
-Dockerfile
