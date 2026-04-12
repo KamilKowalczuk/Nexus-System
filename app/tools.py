@@ -153,89 +153,96 @@ def verify_email_deep(email: str) -> str:
         # Don't cache MX-only checks (less reliable)
         return result
 
-    # API Call
-    try:
-        url = "https://api.debounce.io/v1/"
-        params = {
-            "api": DEBOUNCE_API_KEY,
-            "email": email
-        }
-        
-        # Timeout 10s na request
-        response = requests.get(url, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
+    # API Call with RETRY
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            url = "https://api.debounce.io/v1/"
+            params = {
+                "api": DEBOUNCE_API_KEY,
+                "email": email
+            }
             
-            # Debugowanie w konsoli (widzisz co się dzieje)
-            logger.debug(f"🐛 DeBounce API response: {data}")
-
-            # Pobieramy dane z zagnieżdżonego obiektu lub głównego (Hybryda)
-            debounce_data = data.get("debounce", data) # Fallback na root jeśli brak 'debounce'
+            # Timeout 20s (Docker DNS może lagować)
+            response = requests.get(url, params=params, timeout=20)
             
-            result_text = str(debounce_data.get("result", "")).lower() # np. "safe to send", "risky"
-            code = str(debounce_data.get("code", "0"))
-            
-            # --- LOGIKA BIZNESOWA (AGRESYWNA SPRZEDAŻ) ---
-            
-            result = "UNKNOWN"  # Default
-            
-            # 1. PEWNIAKI
-            if "safe" in result_text or code == "1":
-                result = "OK"
-            
-            # 2. RYZYKOWNE (Catch-all, Role, Spamtrap ale oznaczony jako Risky)
-            elif "risky" in result_text:
-                result = "RISKY"
+            if response.status_code == 200:
+                data = response.json()
                 
-            # 3. SPECJALNE PRZYPADKI (Gdy tekst jest niejasny, patrzymy na kody)
-            elif code == "5":
-                result = "RISKY"  # Accept All
-            elif code == "6":
-                result = "OK"     # Role-Based (Sales/Info)
-            
-            # 4. TWARDE ODRZUCENIE
-            elif "invalid" in result_text or code in ["2", "3", "8"]:
-                result = "INVALID"
-            
-            # 5. Spamtrap (groźny)
-            elif code == "4":
-                result = "INVALID"
-            
-            # ==========================================
-            # STEP 3: CACHE THE RESULT
-            # ==========================================
-            cache_manager.set_email_verification(email, result, api="debounce")
-            logger.info(f"✅ API call: {email} → {result} (cached for 7 days)")
-            critical_monitor.record_success("debounce")
-            return result
+                # Debugowanie w konsoli (widzisz co się dzieje)
+                logger.debug(f"🐛 DeBounce API response: {data}")
 
-        else:
-            status_code = response.status_code
-            resp_text = response.text[:300] if response.text else "EMPTY"
-            logger.warning(f"⚠️ DeBounce API HTTP Error: {status_code} | Body: {resp_text}")
-            if status_code == 402:
-                # Brak kredytów — natychmiastowy stop, nie czekamy na próg
-                critical_monitor.trigger_stop(
-                    api_name="debounce",
-                    reason="DeBounce API zwróciło HTTP 402 — wyczerpane kredyty. Wysyłka wstrzymana.",
-                    consecutive=1,
-                )
-            elif status_code in (401, 403):
-                logger.error(f"🔑 DeBounce AUTH ERROR ({status_code}) — sprawdź DEBOUNCE_API_KEY w .env! Klucz musi mieć 13 znaków.")
+                # Pobieramy dane z zagnieżdżonego obiektu lub głównego (Hybryda)
+                debounce_data = data.get("debounce", data) # Fallback na root jeśli brak 'debounce'
+                
+                result_text = str(debounce_data.get("result", "")).lower() # np. "safe to send", "risky"
+                code = str(debounce_data.get("code", "0"))
+                
+                # --- LOGIKA BIZNESOWA (AGRESYWNA SPRZEDAŻ) ---
+                
+                result = "UNKNOWN"  # Default
+                
+                # 1. PEWNIAKI
+                if "safe" in result_text or code == "1":
+                    result = "OK"
+                
+                # 2. RYZYKOWNE (Catch-all, Role, Spamtrap ale oznaczony jako Risky)
+                elif "risky" in result_text:
+                    result = "RISKY"
+                    
+                # 3. SPECJALNE PRZYPADKI (Gdy tekst jest niejasny, patrzymy na kody)
+                elif code == "5":
+                    result = "RISKY"  # Accept All
+                elif code == "6":
+                    result = "OK"     # Role-Based (Sales/Info)
+                
+                # 4. TWARDE ODRZUCENIE
+                elif "invalid" in result_text or code in ["2", "3", "8"]:
+                    result = "INVALID"
+                
+                # 5. Spamtrap (groźny)
+                elif code == "4":
+                    result = "INVALID"
+                
+                # ==========================================
+                # STEP 3: CACHE THE RESULT
+                # ==========================================
+                cache_manager.set_email_verification(email, result, api="debounce")
+                logger.info(f"✅ API call: {email} → {result} (cached for 7 days)")
+                critical_monitor.record_success("debounce")
+                return result
+
             else:
-                critical_monitor.record_failure("debounce")
-            return "API_DOWN"
+                status_code = response.status_code
+                resp_text = response.text[:300] if response.text else "EMPTY"
+                logger.warning(f"⚠️ DeBounce API HTTP Error: {status_code} | Body: {resp_text}")
+                if status_code == 402:
+                    # Brak kredytów — natychmiastowy stop, nie czekamy na próg
+                    critical_monitor.trigger_stop(
+                        api_name="debounce",
+                        reason="DeBounce API zwróciło HTTP 402 — wyczerpane kredyty. Wysyłka wstrzymana.",
+                        consecutive=1,
+                    )
+                elif status_code in (401, 403):
+                    logger.error(f"🔑 DeBounce AUTH ERROR ({status_code}) — sprawdź DEBOUNCE_API_KEY w .env! Klucz musi mieć 13 znaków.")
+                else:
+                    critical_monitor.record_failure("debounce")
+                return "API_DOWN"
 
-    except requests.exceptions.Timeout:
-        logger.error(f"⏱️ DeBounce API timeout for {email}")
-        critical_monitor.record_failure("debounce")
-        return "API_DOWN"
-    except Exception as e:
-        logger.error(f"❌ DeBounce API error for {email}: {e}")
-        # Fallback to MX check
-        mx_ok = verify_email_mx(email)
-        return "OK" if mx_ok else "INVALID"
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                logger.warning(f"⏱️ DeBounce timeout (próba {attempt+1}/{max_retries}) — retry za 3s...")
+                import time
+                time.sleep(3)
+                continue
+            logger.error(f"⏱️ DeBounce API timeout for {email} (po {max_retries} próbach)")
+            critical_monitor.record_failure("debounce")
+            return "API_DOWN"
+        except Exception as e:
+            logger.error(f"❌ DeBounce API error for {email}: {e}")
+            # Fallback to MX check
+            mx_ok = verify_email_mx(email)
+            return "OK" if mx_ok else "INVALID"
 
 
 def clear_email_cache(email: str = None) -> bool:
