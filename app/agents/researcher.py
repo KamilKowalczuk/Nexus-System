@@ -149,38 +149,30 @@ class TitanScraper:
     """Klient Crawl4AI — darmowy, lokalny scraping z headless Chromium."""
     
     def __init__(self):
-        self._crawler = None
-        self._browser_config = None
-        self._run_config = None
-    
-    async def _ensure_crawler(self):
-        """Lazy init — uruchamiamy przeglądarkę dopiero przy pierwszym użyciu."""
-        if self._crawler is None:
-            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-            self._browser_config = BrowserConfig(
-                headless=True,
-                verbose=False,
-                text_mode=True,  # Tryb tekstowy — nie pobiera obrazów/css (szybszy)
-            )
-            self._run_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS,
-                page_timeout=25000,
-                excluded_tags=["script", "style", "video", "canvas", "svg", "noscript"],
-                wait_until="domcontentloaded",
-            )
-            self._crawler = AsyncWebCrawler(config=self._browser_config)
-            await self._crawler.__aenter__()
-            logger.info("🚀 Crawl4AI: Headless browser uruchomiony")
+        from crawl4ai import BrowserConfig, CrawlerRunConfig, CacheMode
+        self._browser_config = BrowserConfig(
+            headless=True,
+            verbose=False,
+            text_mode=True, 
+        )
+        self._run_config = CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS,
+            page_timeout=25000,
+            excluded_tags=["script", "style", "video", "canvas", "svg", "noscript"],
+            wait_until="domcontentloaded",
+        )
     
     async def scrape(self, url) -> dict | None:
         """Scrapuj pojedynczą stronę — zwraca {markdown, html} lub None."""
-        await self._ensure_crawler()
+        from crawl4ai import AsyncWebCrawler
         try:
             # Hard timeout 30s — Playwright page_timeout nie zawsze działa
-            result = await asyncio.wait_for(
-                self._crawler.arun(url=url, config=self._run_config),
-                timeout=30
-            )
+            async with AsyncWebCrawler(config=self._browser_config) as crawler:
+                result = await asyncio.wait_for(
+                    crawler.arun(url=url, config=self._run_config),
+                    timeout=30
+                )
+
             if not result.success:
                 logger.warning(f"⚠️ Crawl4AI FAIL: {url} — {result.error_message}")
                 return None
@@ -214,8 +206,7 @@ class TitanScraper:
     
     async def scrape_many(self, urls: list) -> list:
         """Batch scraping wielu stron — Crawl4AI arun_many z memory-adaptive dispatcher."""
-        await self._ensure_crawler()
-        from crawl4ai import CrawlerRunConfig, CacheMode
+        from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
         
         run_conf = CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
@@ -226,8 +217,9 @@ class TitanScraper:
         
         try:
             # Hard timeout 60s dla batcha
-            results = await asyncio.wait_for(
-                self._crawler.arun_many(urls, config=run_conf),
+            async with AsyncWebCrawler(config=self._browser_config) as crawler:
+                results = await asyncio.wait_for(
+                    crawler.arun_many(urls, config=run_conf),
                 timeout=60
             )
             return results
@@ -293,14 +285,8 @@ class TitanScraper:
             return ""
     
     async def close(self):
-        """Zamknij przeglądarkę."""
-        if self._crawler:
-            try:
-                await self._crawler.__aexit__(None, None, None)
-            except Exception:
-                pass
-            self._crawler = None
-            logger.info("🛑 Crawl4AI: Headless browser zamknięty")
+        """No-op. Usunięto stanowość, browser jest tworzony i zamykany przy każdym wywołaniu."""
+        pass
 
 scraper = TitanScraper()
 
@@ -308,14 +294,18 @@ scraper = TitanScraper()
 def _run_async_safe(coro, timeout: int = 120):
     """
     Bezpiecznie uruchamia korutynę asynchroniczną z kontekstu synchronicznego.
-
-    Tworzy świeży wątek z własnym event loop, co eliminuje błąd
-    'This event loop is already running' (np. w Streamlit lub gdy
-    funkcja jest wołana przez asyncio.to_thread z głównego loopa).
+    Z prawdziwym timeoutem na poziomie asyncio, aby uniknąć osieroconych wątków.
     """
+    async def wrapper():
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError("Przekroczono czas oczekiwania w _run_async_safe")
+            
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=timeout)
+        future = pool.submit(asyncio.run, wrapper())
+        # Bez timeout= tu, bo wrapper sam wyrzuci TimeoutError i zakończy wątek czysto.
+        return future.result()
 
 
 async def _parallel_scrape(urls: list) -> dict: 
