@@ -250,7 +250,7 @@ def sync_briefs(api_key: str = Security(get_api_key)):
 # ==============================================================================
 
 @app.post("/api/engine/manual/{action}")
-async def trigger_manual_action(action: str, client_id: int = Query(...), api_key: str = Security(get_api_key)):
+async def trigger_manual_action(action: str, background_tasks: BackgroundTasks, client_id: int = Query(...), api_key: str = Security(get_api_key)):
     from app.agents.strategy import generate_strategy
     from app.agents.scout import run_scout_async
     from app.agents.researcher import analyze_lead
@@ -258,74 +258,78 @@ async def trigger_manual_action(action: str, client_id: int = Query(...), api_ke
     from app.scheduler import process_followups, save_draft_via_imap
     from app.tools import verify_sender_dns
 
+    # Weryfikacja wstępna z szybką sesją
     with SessionLocal() as session:
         client = session.query(Client).get(client_id)
         if not client: raise HTTPException(status_code=404, detail="Brak klienta")
-
         logger.info(f"[MANUAL] Akcja '{action}' dla klienta #{client_id} ({client.name})")
 
         if action == "scout":
             camp = session.query(Campaign).filter(Campaign.client_id == client.id, Campaign.status == "ACTIVE").first()
             if not camp:
-                logger.warning(f"[MANUAL:SCOUT] Klient #{client_id} — brak aktywnej kampanii")
                 return {"status": "error", "message": "Brak aktywnego wektora kampanii."}
             logger.info(f"[MANUAL:SCOUT] Generuję strategię dla kampanii #{camp.id}...")
             strategy = generate_strategy(client, camp.strategy_prompt, camp.id)
             if strategy and strategy.search_queries:
-                logger.info(f"[MANUAL:SCOUT] Strategia OK ({len(strategy.search_queries)} zapytań). Uruchamiam scout w tle...")
-                asyncio.create_task(run_scout_async(session, camp.id, strategy))
-            else:
-                logger.warning(f"[MANUAL:SCOUT] Strategia nie zwróciła zapytań — scout nie wystartował")
-            return {"status": "success", "message": "Scout odpalony w tle."}
+                def run_scout_bg(c_id, s):
+                    with SessionLocal() as bg_session:
+                        asyncio.run(run_scout_async(bg_session, c_id, s))
+                # Odpalenie scouta bez blokowania pętli
+                background_tasks.add_task(run_scout_bg, camp.id, strategy)
+                return {"status": "success", "message": "Scout odpalony w tle."}
+            return {"status": "error", "message": "Strategia nie wygenerowała zapytań."}
 
         elif action == "analyze":
-            leads = session.query(Lead).join(Campaign).filter(Campaign.client_id == client.id, Lead.status == "NEW").limit(5).all()
-            logger.info(f"[MANUAL:ANALYZE] Znaleziono {len(leads)} leadów NEW do analizy")
-            for i, l in enumerate(leads, 1):
-                logger.info(f"[MANUAL:ANALYZE] Analizuję lead #{l.id} ({i}/{len(leads)})...")
-                try:
-                    analyze_lead(session, l.id)
-                    logger.info(f"[MANUAL:ANALYZE] Lead #{l.id} — analiza zakończona")
-                except Exception as e:
-                    logger.error(f"[MANUAL:ANALYZE] Lead #{l.id} — błąd: {e}", exc_info=True)
-            return {"status": "success", "message": f"Przeanalizowano {len(leads)} leadów."}
+            def run_analyze_bg(c_id):
+                with SessionLocal() as bg_session:
+                    leads = bg_session.query(Lead).join(Campaign).filter(Campaign.client_id == c_id, Lead.status == "NEW").limit(5).all()
+                    for i, l in enumerate(leads, 1):
+                        logger.info(f"[BG:ANALYZE] lead #{l.id}...")
+                        try:
+                            analyze_lead(bg_session, l.id)
+                        except Exception as e:
+                            logger.error(f"[BG:ANALYZE] błąd #{l.id}: {e}", exc_info=True)
+            background_tasks.add_task(run_analyze_bg, client.id)
+            return {"status": "success", "message": f"Zlecono do analizy w tle (max 5)."}
 
         elif action == "write":
-            leads = session.query(Lead).join(Campaign).filter(Campaign.client_id == client.id, Lead.status == "ANALYZED").limit(5).all()
-            logger.info(f"[MANUAL:WRITE] Znaleziono {len(leads)} leadów ANALYZED do napisania maili")
-            for i, l in enumerate(leads, 1):
-                logger.info(f"[MANUAL:WRITE] Generuję mail dla lead #{l.id} ({i}/{len(leads)})...")
-                try:
-                    generate_email(session, l.id)
-                    logger.info(f"[MANUAL:WRITE] Lead #{l.id} — mail wygenerowany")
-                except Exception as e:
-                    logger.error(f"[MANUAL:WRITE] Lead #{l.id} — błąd: {e}", exc_info=True)
-            return {"status": "success", "message": f"Napisano {len(leads)} maili."}
+            def run_write_bg(c_id):
+                with SessionLocal() as bg_session:
+                    leads = bg_session.query(Lead).join(Campaign).filter(Campaign.client_id == c_id, Lead.status == "ANALYZED").limit(5).all()
+                    for i, l in enumerate(leads, 1):
+                        logger.info(f"[BG:WRITE] lead #{l.id}...")
+                        try:
+                            generate_email(bg_session, l.id)
+                        except Exception as e:
+                            logger.error(f"[BG:WRITE] błąd #{l.id}: {e}", exc_info=True)
+            background_tasks.add_task(run_write_bg, client.id)
+            return {"status": "success", "message": f"Zlecono do wygenerowania maili w tle (max 5)."}
 
         elif action == "send":
             if client.smtp_user and "@" in client.smtp_user:
                 domain = client.smtp_user.split("@")[1]
                 dns_status = verify_sender_dns(domain)
                 if not dns_status.get("spf_ok") or not dns_status.get("dmarc_ok"):
-                    logger.error(f"[MANUAL:SEND] Blokada DNS dla domeny {domain}: SPF={dns_status.get('spf_ok')}, DMARC={dns_status.get('dmarc_ok')}")
-                    return {"status": "error", "message": f"Blokada Antyspamowa DNS dla domeny {domain}"}
-
-            logger.info(f"[MANUAL:SEND] Przetwarzam follow-upy dla klienta #{client_id}...")
-            process_followups(session, client)
-            leads = session.query(Lead).join(Campaign).filter(Campaign.client_id == client.id, Lead.status == "DRAFTED").limit(5).all()
-            logger.info(f"[MANUAL:SEND] Znaleziono {len(leads)} draftów do wysyłki")
-            from sqlalchemy import func as sqlfunc
-            for i, l in enumerate(leads, 1):
-                try:
-                    logger.info(f"[MANUAL:SEND] Wysyłam lead #{l.id} ({i}/{len(leads)})...")
-                    save_draft_via_imap(l, client)
-                    l.status = "SENT"
-                    l.sent_at = sqlfunc.now()
-                    session.commit()
-                    logger.info(f"[MANUAL:SEND] Lead #{l.id} — wysłany OK")
-                except Exception as e:
-                    logger.error(f"[MANUAL:SEND] Lead #{l.id} — błąd wysyłki: {e}", exc_info=True)
-            return {"status": "success", "message": f"Wysłano i ponowiono FUP dla leadów."}
+                    logger.error(f"[MANUAL:SEND] Blokada DNS: {domain}")
+                    return {"status": "error", "message": f"Blokada Antyspamowa DNS dla {domain}"}
+            
+            def run_send_bg(c_id):
+                with SessionLocal() as bg_session:
+                    c = bg_session.query(Client).get(c_id)
+                    process_followups(bg_session, c)
+                    leads = bg_session.query(Lead).join(Campaign).filter(Campaign.client_id == c.id, Lead.status == "DRAFTED").limit(5).all()
+                    from sqlalchemy import func as sqlfunc
+                    for i, l in enumerate(leads, 1):
+                        try:
+                            logger.info(f"[BG:SEND] lead #{l.id}...")
+                            save_draft_via_imap(l, c)
+                            l.status = "SENT"
+                            l.sent_at = sqlfunc.now()
+                            bg_session.commit()
+                        except Exception as e:
+                            logger.error(f"[BG:SEND] błąd #{l.id}: {e}")
+            background_tasks.add_task(run_send_bg, client.id)
+            return {"status": "success", "message": f"Wysyłka (max 5) i FUP odpalone w tle."}
 
         logger.warning(f"[MANUAL] Nieznana akcja: '{action}'")
         return {"status": "error", "message": "Nieznana akcja manualna."}
