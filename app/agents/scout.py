@@ -448,7 +448,6 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
                     "searchStringsArray": [query],
                     "maxCrawledPlacesPerSearch": BATCH_SIZE,
                     "language": "pl",
-                    "countryCode": "pl",
                     "skipClosedPlaces": True,
                     "onlyWebsites": True,
                 }
