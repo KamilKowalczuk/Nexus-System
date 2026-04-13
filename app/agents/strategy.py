@@ -101,35 +101,25 @@ KAŻDE zapytanie: MAKSYMALNIE 2-4 słowa! (synonim + miasto)
 
 === STRATEGIA ===
 
-1. FORMAT ZAPYTANIA: [synonim branżowy] + [miasto]
-    Przykłady poprawnych zapytań:
-    - "przychodnia Lublin"
-    - "lekarz POZ Lublin"
-    - "NZOZ Zamość"  
-    - "lekarz rodzinny Chełm"
-    - "centrum medyczne Puławy"
-    - "gabinet lekarski Biłgoraj"
-    - "praktyka lekarza rodzinnego Chełm"
-    - "indywidualna praktyka lekarska Puławy"
-    - "gabinet lekarza rodzinnego Biłgoraj"
-    - "ośrodek zdrowia Kraśnik"
+1. FORMAT ZAPYTANIA: [synonim branżowy] + [miasto z ICP]
+    Każde zapytanie MAKSYMALNIE 2-4 słowa!
+    Przykłady formy:
+    - "przychodnia [Miasto]"
+    - "lekarz POZ [Miasto z ICP]"
+    - "NZOZ [Mniejsza miejscowość]"
 
-2. RÓŻNICUJ SYNONIMY w ramach tego samego miasta:
+2. RÓŻNICUJ SYNONIMY w ramach docelowych miast:
    Każdy synonim daje INNE wyniki w Google Maps!
-   Synonimy: przychodnia, NZOZ, centrum medyczne, ośrodek zdrowia,
-   lekarz rodzinny, gabinet lekarski, poradnia, praktyka lekarska 
-   - Synonimy dla MAŁYCH firm (unikaj dużych klinik!):
-   NZOZ, lekarz POZ, praktyka lekarza rodzinnego, gabinet lekarza rodzinnego, 
-   ośrodek zdrowia, indywidualna praktyka lekarska, przychodnia rodzinna
+   Synonimy: przychodnia, NZOZ, centrum medyczne, ośrodek zdrowia, poradnia, praktyka. 
 
-3. RÓŻNICUJ MIASTA — od największych:
-   Duże: Lublin, Zamość, Chełm, Biała Podlaska, Puławy, Świdnik
-   Średnie: Kraśnik, Łuków, Biłgoraj, Lubartów, Łęczna, Tomaszów Lubelski
-   Mniejsze: Hrubieszów, Radzyń Podlaski, Krasnystaw, Włodawa, Parczew
+3. GEO-TARGETING: WYKORZYSTAJ LOKALIZACJE Z ICP!
+   Zidentyfikuj z bloku "KOGO SZUKAMY (ICP)" oraz "Cel" interesujący klienta obszar geograficzny (województwo, region, miasta).
+   Wygeneruj zapytania TYLKO dla miast należących do tego obszaru docelowego!
+   Rotuj miasta - od największych do małych miasteczek w tym regionie (jeśli obszar to np. Wielkopolska, wybierz Poznań, Kalisz, Konin, Piła itp.).
 
 4. WYBÓR ŹRÓDŁA (source):
    - "maps" — DOMYŚLNIE (90% zapytań)
-   - "search" — tylko jeśli ICP wymaga firm online
+   - "search" — tylko jeśli ICP wymaga firm w 100% zdalnych/online bez adresu fizycznego.
 
 5. UNIKALNOŚĆ: Nie powtarzaj czarnej listy.
 
