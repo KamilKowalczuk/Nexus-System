@@ -490,7 +490,7 @@ async def _handle_scouting(
 
     console.print(f"[bold red]🕵️ {client.name}:[/bold red] Sprawdzam strategię...")
     strategy = await asyncio.to_thread(
-        generate_strategy, client, campaign.strategy_prompt, campaign.id
+        generate_strategy, client, campaign.strategy_prompt, campaign.id, session
     )
 
     if strategy and getattr(strategy, "search_queries", None):
@@ -721,6 +721,23 @@ async def nexus_core_loop():
                 except Exception as _sync_err:
                     logger.warning(f"[SYNC] Pominięto sync (brak tabel Payload?): {_sync_err}")
                 last_sync_time = now
+
+            # TEACHER CHECK — synteza feedbacku (30-min debounce / emergency)
+            try:
+                from app.agents.teacher import check_and_run_teacher
+                with Session(engine) as teacher_session:
+                    teacher_clients = teacher_session.query(Client.id).filter(
+                        Client.status == "ACTIVE"
+                    ).all()
+                    for (cid,) in teacher_clients:
+                        result = check_and_run_teacher(teacher_session, cid)
+                        if result and result.get("success"):
+                            logger.info(
+                                f"🧠 [TEACHER] Klient #{cid}: synteza v{result.get('version')} — "
+                                f"{result.get('feedbacks_processed')} feedbacków"
+                            )
+            except Exception as teacher_err:
+                logger.warning(f"[TEACHER] Błąd sprawdzania: {teacher_err}")
 
             # STATYSTYKI CO 5 MINUT (Phase 2)
             if PHASE2_ENABLED and (now - last_stats_time).total_seconds() > STATS_INTERVAL:

@@ -99,6 +99,10 @@ class Client(Base):
     scout_model = Column(String, default="gemini-3.1-flash-lite-preview")      # Scout + Strategy
     researcher_model = Column(String, default="gemini-3.1-flash-lite-preview") # Researcher
     writer_model = Column(String, default="gemini-3.1-flash-lite-preview")     # Writer + Auditor
+    teacher_model = Column(String, default="gemini-3.1-pro-preview")           # Teacher (synteza wiedzy)
+
+    # --- SCOUT / GATEKEEPER CONFIG ---
+    gatekeeper_strictness = Column(String, default="balanced")  # strict / balanced / permissive
 
     campaigns = relationship("Campaign", back_populates="client")
 
@@ -148,13 +152,14 @@ class Campaign(Base):
 # --- 4. LEADS (Konkretne Szanse Sprzedażowe) ---
 class Lead(Base):
     __tablename__ = "leads"
-    __table_args__ = (
-        UniqueConstraint("campaign_id", "global_company_id", name="uq_lead_campaign_company"),
-    )
-    
     id = Column(Integer, primary_key=True, index=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"))
+    client_id = Column(Integer, ForeignKey("clients.id"), index=True) # Nowe: bezpośredni link do klienta dla deduplikacji
     global_company_id = Column(Integer, ForeignKey("global_companies.id"))
+    
+    __table_args__ = (
+        UniqueConstraint("client_id", "global_company_id", name="uq_lead_client_company"),
+    )
     
     # WYNIKI AGENTÓW
     ai_analysis_summary = Column(Text) # "Pasuje do ICP bo..."
@@ -262,6 +267,97 @@ class CampaignStatistics(Base):
     reply_rate = Column(Float, default=0.0)
     positive_rate = Column(Float, default=0.0)
     avg_response_time_hours = Column(Float, nullable=True)
+
+    client = relationship("Client")
+
+
+# --- 7. LEAD FEEDBACK (Oceny operatora — input dla Nauczyciela) ---
+class LeadFeedback(Base):
+    """
+    Feedback operatora na wygenerowany content (research + mail).
+    Każdy lead może mieć max 1 feedback (unique lead_id).
+    Nieprzetworzony feedback (is_processed=False) czeka na batched syntezę przez Teacher.
+    """
+    __tablename__ = "lead_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), unique=True, nullable=False, index=True)
+
+    # Oceny gwiazdkowe (1-5)
+    scout_rating = Column(Integer, nullable=True)        # Czy firma w ogóle powinna tu trafić? (trafność scouta)
+    researcher_rating = Column(Integer, nullable=True)   # Jakość researchu (analiza strony, icebreaker, dane)
+    writer_rating = Column(Integer, nullable=True)        # Jakość maila (ton, trafność, CTA)
+
+    # Komentarze tekstowe operatora
+    scout_comments = Column(Text, nullable=True)         # "To hurtownia leków, nie przychodnia"
+    researcher_comments = Column(Text, nullable=True)     # "Icebreaker był o zamkniętej poradni"
+    writer_comments = Column(Text, nullable=True)         # "Za agresywny ton, brzmi jak sprzedaż"
+
+    # Poprawki operatora (contrastive learning)
+    corrected_subject = Column(String, nullable=True)     # Operator wkleja lepszy temat
+    corrected_body = Column(Text, nullable=True)          # Operator wkleja lepszą treść
+
+    # Logika debouncing (30-minutowy batch)
+    is_processed = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=_now_pl)
+    updated_at = Column(DateTime, default=_now_pl, onupdate=_now_pl)
+
+    lead = relationship("Lead")
+
+
+# --- 8. CLIENT ALIGNMENT (Księga Zasad — output Nauczyciela) ---
+class ClientAlignment(Base):
+    """
+    Master Rulebook per klient — wynik syntezy wiedzy przez Teacher Agent.
+    Wstrzykiwany do promptów Writera i Researchera jako priorytetowe dyrektywy.
+    """
+    __tablename__ = "client_alignments"
+
+    client_id = Column(Integer, ForeignKey("clients.id"), primary_key=True)
+
+    # Skondensowane instrukcje (generowane przez LLM) — per agent
+    strategy_guidelines = Column(Text, nullable=True)     # Dyrektywy dla Strategy (synonimy, geo, co działa)
+    scouting_guidelines = Column(Text, nullable=True)     # Dyrektywy dla Scout Gatekeeper (co przepuszczać/blokować)
+    research_guidelines = Column(Text, nullable=True)     # Dyrektywy dla Researchera
+    writing_guidelines = Column(Text, nullable=True)      # Dyrektywy dla Writera
+
+    # Contrastive Learning — złote i czarne przykłady (Writer)
+    # Format: {"positive": [{"subject": "...", "body_snippet": "...", "reason": "..."}],
+    #          "negative": [{"subject": "...", "body_snippet": "...", "reason": "..."}]}
+    gold_examples = Column(JSONB, default={"positive": [], "negative": []})
+
+    # Wersjonowanie (rollback)
+    version = Column(Integer, default=1)
+
+    # Metryka skuteczności — średnia ocena feedbacków w ostatnim batchu syntezy
+    avg_rating_at_synthesis = Column(Float, nullable=True)
+    feedbacks_processed_count = Column(Integer, default=0)   # Łączna liczba przetworzonych feedbacków
+
+    last_updated = Column(DateTime, default=_now_pl)
+
+    client = relationship("Client")
+
+
+# --- 9. ALIGNMENT HISTORY (Archiwum wersji — rollback) ---
+class AlignmentHistory(Base):
+    """
+    Snapshot ClientAlignment przed nadpisaniem przez Teacher.
+    Max 10 wersji per klient (FIFO). Umożliwia rollback.
+    """
+    __tablename__ = "alignment_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+
+    version = Column(Integer, nullable=False)
+    strategy_guidelines = Column(Text, nullable=True)
+    scouting_guidelines = Column(Text, nullable=True)
+    research_guidelines = Column(Text, nullable=True)
+    writing_guidelines = Column(Text, nullable=True)
+    gold_examples = Column(JSONB, default={"positive": [], "negative": []})
+    avg_rating_at_synthesis = Column(Float, nullable=True)
+
+    archived_at = Column(DateTime, default=_now_pl)
 
     client = relationship("Client")
 

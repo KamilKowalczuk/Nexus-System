@@ -593,12 +593,12 @@ Czym się zajmuje: {research.summary}
 Produkty/usługi: {", ".join(research.key_products or [])}
 
 === ZASADY OCENY ===
-1. Jeśli firma ma negatywne "Sygnały Krytyczne" (np. nie przyjmuje nowych pacjentów, zawiesiła działalność, jest w likwidacji) → approved=False.
+1. Jeśli firma ma negatywne "Sygnały Krytyczne" (np. nie przyjmuje nowych klientów, zawiesiła działalność, jest w likwidacji) → approved=False.
 2. Jeśli firma narusza którykolwiek TWARDY ZAKAZ → approved=False, bez wyjątków.
-3. Jeśli branża firmy jest CAŁKOWICIE INNA niż zakłada ICP (np. szukasz placówek medycznych, a trafiasz na IT, cyberbezpieczeństwo lub biuro rachunkowe) → approved=False. Nie naciągaj na siłę!
+3. Jeśli branża firmy jest CAŁKOWICIE INNA niż zakłada ICP (np. szukasz firm z branży X, a trafiasz na firmę z zupełnie innej branży) → approved=False. Nie naciągaj na siłę!
 4. Jeśli firma choćby częściowo pasuje do ICP i nie narusza zakazów → approved=True.
 5. W razie wątpliwości czy firma pasuje do targetu — ODRZUĆ (approved=False). Chronimy bazę przed spamowaniem przypadkowych firm.
-6. MARTWE STRONY: WIEK strony NIE jest powodem do odrzucenia. Odrzucaj TYLKO przez zakazy, brak pacjentów lub ICP mismatch."""
+6. MARTWE STRONY: WIEK strony NIE jest powodem do odrzucenia. Odrzucaj TYLKO przez zakazy, brak klientów lub ICP mismatch."""
 
     try:
         gatekeeper_llm = create_structured_llm(researcher_model, _GatekeeperVerdict, temperature=0.0)
@@ -862,7 +862,23 @@ def analyze_lead(session: Session, lead_id: int):
     client_tone = (getattr(client, "tone_of_voice", None) or "").strip()
     client_constraints = (client.negative_constraints or "").strip()
 
-    client_context = f"""=== 🎯 KONTEKST NADAWCY — W CZYIM IMIENIU SZUKASZ ===
+    # --- TEACHER ALIGNMENT (Dynamiczna Wiedza Klienta) ---
+    research_alignment_block = ""
+    try:
+        from app.database import ClientAlignment
+        alignment = session.query(ClientAlignment).filter_by(client_id=client.id).first()
+        if alignment and alignment.research_guidelines:
+            research_alignment_block = (
+                f"\n=== 🧠 DYNAMICZNA WIEDZA KLIENTA (BEZWZGL. PRIORYTET — v{alignment.version}) ===\n"
+                f"{alignment.research_guidelines}\n"
+                f"=== KONIEC DYNAMICZNEJ WIEDZY ===\n"
+            )
+            logger.info(f"[RESEARCHER] Teacher Alignment v{alignment.version} wstrzyknięty")
+    except Exception as e:
+        logger.debug(f"[RESEARCHER] Teacher alignment niedostępny: {e}")
+
+    client_context = f"""{research_alignment_block}
+=== 🎯 KONTEKST NADAWCY — W CZYIM IMIENIU SZUKASZ ===
 Firma nadawcy: {client_name}
 Branża nadawcy: {client_industry}
 Co nadawca oferuje (VALUE PROPOSITION): {client_value_prop}
@@ -876,8 +892,8 @@ Nie jesteś generycznym skanerem stron. Jesteś EKSPERTEM w branży nadawcy ({cl
 Twój CEL: znaleźć na stronie informacje, które ŁĄCZĄ SIĘ z ofertą nadawcy.
 Szukasz MOSTU między tym co widzisz na stronie, a tym co nadawca może zaoferować.
 
-Przykłady poprawnego myślenia:
-- Nadawca oferuje rozliczenia NFZ → szukaj: kontrakty, programy zdrowotne, etaty, raportowanie, zakres POZ
+Przykłady poprawnego myślenia (TWÓJ KONKRETNY PRZYPADEK jest PIERWSZY):
+- Nadawca oferuje: {client_value_prop[:120] if client_value_prop else client_industry} → szukaj sygnałów POWIĄZANYCH z tą ofertą na stronie docelowej
 - Nadawca robi strony WWW → szukaj: wiek strony, brak mobile, stary design, brak SSL
 - Nadawca sprzedaje automatyzację AI → szukaj: procesy manualne, duży zespół, powtarzalne zadania
 - Nadawca oferuje rekrutację → szukaj: oferty pracy, wakaty, tempo wzrostu zespołu
@@ -917,16 +933,18 @@ Odrzuć lead TYLKO gdy strona jest całkowicie pusta (404, porzucona domena, zer
    - Wpisz IMIĘ. Jeśli warunki niespełnione → NULL.
 
 6. CRITICAL_BUSINESS_SIGNALS:
-   - Szukaj informacji krytycznych blokujących współpracę, np.: "Tymczasowo wstrzymujemy zapisy nowych Pacjentów", "Brak przyjęć", "Gabinety zamknięte", "W likwidacji", "Działalność zawieszona".
+   - Szukaj informacji krytycznych blokujących współpracę, np.: "Wstrzymujemy zapisy", "Zamknięte do odwołania", "W likwidacji", "Zawieszenie działalności", "Nie przyjmujemy nowych klientów".
    - Wypisz je DOSŁOWNIE z tekstu. Jeśli brak → opuść pole.
 
 7. ICEBREAKER — OBSERWACJA ZE STRONY (NIE PITCH!):
-   - Znajdź fakt na stronie POWIĄZANY z branżą nadawcy
-   - To MUSI być obserwacja o firmie docelowej. ZAKAZANE: pisanie o usługach nadawcy ("pomagamy", "oferujemy", "eliminujemy chaos")
+   - Znajdź fakt na stronie POWIĄZANY z branżą nadawcy ({client_industry})
+   - To MUSI być obserwacja o FIRMIE DOCELOWEJ, NIE o nadawcy
+   - ZAKAZANE: pisanie o usługach/ofercie nadawcy ("pomagamy", "oferujemy", "eliminujemy chaos")
    - Zbuduj z niego zdanie: co widzisz → dlaczego to interesujące
+   - Max 1-2 zdania, max 40 słów
    - Jeśli brak konkretu powiązanego z nadawcą → "Brak"
 
-7. SUMMARY — 2 zdania:
+8. SUMMARY — 2 zdania:
    - Zdanie 1: Czym DOKŁADNIE się zajmują
    - Zdanie 2: Co wyróżnia / czym się chwalą
 
@@ -949,7 +967,7 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
    - Przeczytaj uważnie mailto: linki w HTML
 
 2. DECYDENCI — WYŁĄCZNIE Z SEKCJI ZESPÓŁ/TEAM/O NAS:
-   - Szukaj sekcji: "Zespół", "Team", "O nas", "Nasi eksperci", "Nasi lekarze"
+   - Szukaj sekcji: "Zespół", "Team", "O nas", "Nasi eksperci", "Kadra", "Leadership"
    - Zapisz: "Imię Nazwisko (Rola)" — np. "Jan Kowalski (CEO)"
    - Jeśli NIE MA sekcji zespołu → puste []. ZERO zgadywania.
 
@@ -969,28 +987,25 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
 
 6. ICEBREAKER — OBSERWACJA ZE STRONY (NIE PITCH!):
    - To MUSI BYĆ obserwacja o FIRMIE DOCELOWEJ, NIE o nadawcy.
-   - ZAKAZANE: "pomagamy placówkom takim jak Państwa", "oferujemy", "eliminujemy chaos" — to PITCH, nie icebreaker!
+   - ZAKAZANE: "pomagamy firmom takim jak Państwa", "oferujemy", "eliminujemy chaos" — to PITCH, nie icebreaker!
    - ZAKAZANE: pisanie czegokolwiek o usługach/ofercie nadawcy w icebreaker.
-   - Schemat: (1) Konkretny fakt ze strony docelowej firmy → (2) Dlaczego to interesujące w kontekście branży → (3) Gotowe zdanie.
-   - DOBRE: "Placówka łączy POZ z kilkunastoma poradniami specjalistycznymi i prowadzi punkt pobrań — to szeroki zakres do koordynacji."
-   - DOBRE: "Na stronie widać aktywne programy profilaktyczne NFZ uruchomione w 2025 roku."
-   - ZŁE: "Pomagamy placówkom takim jak Państwa eliminować chaos w rozliczeniach" (to PITCH!)
-   - ZŁE: "Fajnie że macie promocję na mezoterapię" (niezwiązane z branżą nadawcy)
+   - Schemat: (1) Konkretny fakt ze strony docelowej → (2) Dlaczego to interesujące w kontekście branży ({client_industry}) → (3) Gotowe zdanie.
+   - DOBRE: obserwacja o skali, aktywności, rozwoju lub wyzwaniach firmy docelowej POWIĄZANA z ofertą nadawcy
+   - ZŁE: cokolwiek o usługach/produktach nadawcy ("pomagamy", "oferujemy")
+   - ZŁE: obserwacja niezwiązana z branżą nadawcy
+   - Max 1-2 zdania, max 40 słów
    - Jeśli ŻADEN fakt na stronie nie wiąże się z branżą nadawcy → wpisz "Brak"
-   - ZAWSZE opieraj się o AKTUALNE informacje. Nie chwytaj się starych programów/dotacji.
-   - ⚠️ PROGRAMY ZDROWOTNE/RZĄDOWE (NFZ, UE, dotacje): Możesz wymienić program PO NAZWIE TYLKO gdy:
-     (a) Nazwa programu jest WYRAŹNIE wymieniona na stronie tej placówki
-     (b) Kontekst wskazuje że program jest AKTUALNIE realizowany (daty z bieżącego roku, aktywna rejestracja)
-     Jeśli widzisz nazwę programu ale BEZ dat lub sygnałów aktywności → UOGÓLNIJ:
-     ❌ "Realizują Państwo program Profilaktyka 40+" (może być nieaktualny!)
-     ✅ "Przy tak szerokim zakresie kontraktów NFZ, koordynacja rozliczeń jest dużym wyzwaniem"
+   - ZAWSZE opieraj się o AKTUALNE informacje. Nie chwytaj się starych wydarzeń/programów.
+   - ⚠️ PROGRAMY RZĄDOWE / DOTACJE / CERTYFIKATY: Możesz wymienić PO NAZWIE TYLKO gdy:
+     (a) Nazwa jest WYRAŹNIE wymieniona na stronie tej firmy
+     (b) Kontekst wskazuje że jest AKTUALNIE realizowane (daty z bieżącego roku, aktywna rejestracja)
+     Jeśli widzisz nazwę ale BEZ dat lub sygnałów aktywności → UOGÓLNIJ zamiast cytować
 
 7. PAIN_POINTS / OPPORTUNITIES — 2-3 punkty W KONTEKŚCIE OFERTY NADAWCY:
    - Nie szukaj "bólu ogólnego". Szukaj bólu ZWIĄZANEGO z tym co nadawca może rozwiązać.
-   - Nadawca = rozliczenia NFZ → "Szeroki zakres świadczeń POZ + specjaliści = złożone raportowanie"
-   - Nadawca = strony WWW → "Strona z 2020, brak wersji mobilnej = utrata pacjentów szukających online"
-   - Nadawca = AI automatyzacja → "Duży zespół + procesy manualne = pole do automatyzacji"
-   - Każdy punkt MUSI łączyć obserwację ze strony z potencjalną potrzebą klienta związaną z nadawcą.
+   - Kontekst nadawcy: {client_value_prop[:200] if client_value_prop else client_industry}
+   - Schemat: [obserwacja ze strony] + [jak wiąże się z ofertą nadawcy] = pain point
+   - Każdy punkt MUSI łączyć obserwację ze strony z potencjalną potrzebą firmy docelowej, którą nadawca może zaadresować.
 
 8. TECH STACK:
    - TYLKO technologie WPROST wymienione na stronie
@@ -1001,7 +1016,7 @@ Twoja analiza decyduje o jakości maila. Bzdury = bzdurny mail. Konkrety = mail 
 
 10. CRITICAL_BUSINESS_SIGNALS:
     - Szukaj informacji krytycznych blokujących współpracę (np. w aktualnościach/popupach).
-    - Obejmuje: "Wstrzymujemy zapisy nowych Pacjentów / Klientów", "Placówka zamknięta do odwołania", "W likwidacji", "Zawieszenie działalności".
+    - Obejmuje: "Nie przyjmujemy nowych klientów", "Zamknięte do odwołania", "W likwidacji", "Zawieszenie działalności", "Firma w upadłości".
     - Cytuj fragment dosłownie. Jeśli brak takich sygnałów → leave empty list.
 
 === ŻELAZNE REGUŁY ===

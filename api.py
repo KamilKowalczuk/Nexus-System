@@ -55,7 +55,7 @@ if not logger.handlers:
     logger.addHandler(_handler)
 
 # Baza danych i inne
-from app.database import SessionLocal, Client, Campaign, Lead, GlobalCompany, Base, engine
+from app.database import SessionLocal, Client, Campaign, Lead, GlobalCompany, Base, engine, LeadFeedback, ClientAlignment, AlignmentHistory
 from sqlalchemy import func
 
 app = FastAPI(title="Nexus Engine API", description="Control API for Titan Bot Engine")
@@ -269,7 +269,7 @@ async def trigger_manual_action(action: str, background_tasks: BackgroundTasks, 
             if not camp:
                 return {"status": "error", "message": "Brak aktywnego wektora kampanii."}
             logger.info(f"[MANUAL:SCOUT] Generuję strategię dla kampanii #{camp.id}...")
-            strategy = generate_strategy(client, camp.strategy_prompt, camp.id)
+            strategy = generate_strategy(client, camp.strategy_prompt, camp.id, session=session)
             if strategy and strategy.search_queries:
                 def run_scout_bg(c_id, s):
                     with SessionLocal() as bg_session:
@@ -330,6 +330,35 @@ async def trigger_manual_action(action: str, background_tasks: BackgroundTasks, 
                             logger.error(f"[BG:SEND] błąd #{l.id}: {e}")
             background_tasks.add_task(run_send_bg, client.id)
             return {"status": "success", "message": f"Wysyłka (max 5) i FUP odpalone w tle."}
+
+        elif action == "teacher":
+            from app.agents.teacher import run_teacher_synthesis
+            pending_count = (
+                session.query(LeadFeedback)
+                .join(Lead, LeadFeedback.lead_id == Lead.id)
+                .join(Campaign, Lead.campaign_id == Campaign.id)
+                .filter(Campaign.client_id == client_id, LeadFeedback.is_processed == False)
+                .count()
+            )
+            if pending_count == 0:
+                return {"status": "success", "message": "Brak nowych feedbacków do syntezy."}
+
+            def run_teacher_bg(c_id):
+                with SessionLocal() as bg_session:
+                    logger.info(f"[BG:TEACHER] Synteza wiedzy klient #{c_id}...")
+                    try:
+                        result = run_teacher_synthesis(bg_session, c_id)
+                        if result.get("success"):
+                            logger.info(
+                                f"[BG:TEACHER] OK — v{result.get('version')}, "
+                                f"{result.get('feedbacks_processed')} feedbacków"
+                            )
+                        else:
+                            logger.error(f"[BG:TEACHER] Błąd: {result.get('error')}")
+                    except Exception as e:
+                        logger.error(f"[BG:TEACHER] Exception: {e}", exc_info=True)
+            background_tasks.add_task(run_teacher_bg, client.id)
+            return {"status": "success", "message": f"Teacher uruchomiony w tle ({pending_count} feedbacków)."}
 
         logger.warning(f"[MANUAL] Nieznana akcja: '{action}'")
         return {"status": "error", "message": "Nieznana akcja manualna."}
@@ -493,6 +522,9 @@ class ClientUpdate(BaseModel):
     scout_model: str | None = None
     researcher_model: str | None = None
     writer_model: str | None = None
+    teacher_model: str | None = None
+    # Gatekeeper
+    gatekeeper_strictness: str | None = None  # strict / balanced / permissive
 
 @app.get("/api/clients")
 def get_clients(api_key: str = Security(get_api_key)):
@@ -881,6 +913,237 @@ def phase2_reset_limits(client_id: int, api_key: str = Security(get_api_key)):
         return {"status": "success"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+# ==============================================================================
+# TEACHER ENGINE — Feedback, Alignment, Trigger, Rollback
+# ==============================================================================
+
+# --- FEEDBACK CRUD (pełne pola — laboratorium do oceniania) ---
+
+class FeedbackCreate(BaseModel):
+    scout_rating: int | None = None            # 1-5 (jakość leadu)
+    scout_comments: str | None = None
+    researcher_rating: int | None = None       # 1-5
+    writer_rating: int | None = None           # 1-5
+    researcher_comments: str | None = None
+    writer_comments: str | None = None
+    corrected_subject: str | None = None
+    corrected_body: str | None = None
+
+class FeedbackUpdate(BaseModel):
+    scout_rating: int | None = None
+    scout_comments: str | None = None
+    researcher_rating: int | None = None
+    writer_rating: int | None = None
+    researcher_comments: str | None = None
+    writer_comments: str | None = None
+    corrected_subject: str | None = None
+    corrected_body: str | None = None
+
+
+@app.post("/api/leads/feedback/{lead_id}")
+def create_or_update_feedback(lead_id: int, payload: FeedbackCreate, api_key: str = Security(get_api_key)):
+    """Tworzy lub aktualizuje feedback dla leada (upsert na lead_id)."""
+    with SessionLocal() as session:
+        lead = session.query(Lead).get(lead_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead nie znaleziony")
+
+        fb = session.query(LeadFeedback).filter_by(lead_id=lead_id).first()
+        if fb:
+            update_data = payload.dict(exclude_unset=True)
+            for key, value in update_data.items():
+                setattr(fb, key, value)
+            fb.is_processed = False  # Reset — Teacher musi ponownie przetworzyć
+            logger.info(f"[FEEDBACK] Zaktualizowano feedback dla lead #{lead_id}")
+        else:
+            fb = LeadFeedback(lead_id=lead_id, **payload.dict(exclude_unset=True))
+            session.add(fb)
+            logger.info(f"[FEEDBACK] Nowy feedback dla lead #{lead_id}")
+
+        session.commit()
+
+        return {
+            "status": "success",
+            "feedback_id": fb.id,
+            "lead_id": lead_id,
+            "is_processed": fb.is_processed,
+        }
+
+
+@app.get("/api/leads/feedback/{lead_id}")
+def get_feedback(lead_id: int, api_key: str = Security(get_api_key)):
+    """Pobiera feedback dla leada ze wszystkimi polami."""
+    with SessionLocal() as session:
+        fb = session.query(LeadFeedback).filter_by(lead_id=lead_id).first()
+        if not fb:
+            return {"exists": False}
+
+        lead = session.query(Lead).get(lead_id)
+        company = None
+        if lead and lead.global_company_id:
+            company = session.query(GlobalCompany).get(lead.global_company_id)
+
+        return {
+            "exists": True,
+            "id": fb.id,
+            "lead_id": fb.lead_id,
+            "scout_rating": fb.scout_rating,
+            "scout_comments": fb.scout_comments,
+            "researcher_rating": fb.researcher_rating,
+            "writer_rating": fb.writer_rating,
+            "researcher_comments": fb.researcher_comments,
+            "writer_comments": fb.writer_comments,
+            "corrected_subject": fb.corrected_subject,
+            "corrected_body": fb.corrected_body,
+            "is_processed": fb.is_processed,
+            "created_at": fb.created_at.isoformat() if fb.created_at else None,
+            "updated_at": fb.updated_at.isoformat() if fb.updated_at else None,
+            # Kontekst leada (dla panelu)
+            "original_subject": lead.generated_email_subject if lead else None,
+            "original_body": lead.generated_email_body if lead else None,
+            "company_name": company.name if company else None,
+            "company_domain": company.domain if company else None,
+            "analysis_summary": lead.ai_analysis_summary if lead else None,
+            "confidence": lead.ai_confidence_score if lead else None,
+            "status": lead.status if lead else None,
+        }
+
+
+@app.delete("/api/leads/feedback/{lead_id}")
+def delete_feedback(lead_id: int, api_key: str = Security(get_api_key)):
+    """Usuwa feedback dla leada."""
+    with SessionLocal() as session:
+        fb = session.query(LeadFeedback).filter_by(lead_id=lead_id).first()
+        if not fb:
+            raise HTTPException(status_code=404, detail="Feedback nie istnieje")
+        session.delete(fb)
+        session.commit()
+        logger.info(f"[FEEDBACK] Usunięto feedback dla lead #{lead_id}")
+        return {"status": "success"}
+
+
+@app.get("/api/feedback/{client_id}")
+def list_feedbacks(client_id: int, processed: bool | None = None, api_key: str = Security(get_api_key)):
+    """Lista wszystkich feedbacków dla klienta. Filtr: ?processed=false dla oczekujących."""
+    with SessionLocal() as session:
+        query = (
+            session.query(LeadFeedback)
+            .join(Lead, LeadFeedback.lead_id == Lead.id)
+            .join(Campaign, Lead.campaign_id == Campaign.id)
+            .filter(Campaign.client_id == client_id)
+        )
+        if processed is not None:
+            query = query.filter(LeadFeedback.is_processed == processed)
+
+        feedbacks = query.order_by(LeadFeedback.updated_at.desc()).limit(100).all()
+
+        result = []
+        for fb in feedbacks:
+            lead = session.query(Lead).get(fb.lead_id)
+            company = None
+            if lead and lead.global_company_id:
+                company = session.query(GlobalCompany).get(lead.global_company_id)
+
+            result.append({
+                "id": fb.id,
+                "lead_id": fb.lead_id,
+                "scout_rating": fb.scout_rating,
+                "scout_comments": fb.scout_comments,
+                "researcher_rating": fb.researcher_rating,
+                "writer_rating": fb.writer_rating,
+                "researcher_comments": fb.researcher_comments,
+                "writer_comments": fb.writer_comments,
+                "corrected_subject": fb.corrected_subject,
+                "corrected_body": fb.corrected_body,
+                "is_processed": fb.is_processed,
+                "created_at": fb.created_at.isoformat() if fb.created_at else None,
+                "updated_at": fb.updated_at.isoformat() if fb.updated_at else None,
+                "company_name": company.name if company else None,
+                "original_subject": lead.generated_email_subject if lead else None,
+                "status": lead.status if lead else None,
+            })
+        return result
+
+
+# --- ALIGNMENT CRUD (Księga Zasad) ---
+
+@app.get("/api/alignment/{client_id}")
+def get_alignment(client_id: int, api_key: str = Security(get_api_key)):
+    """Pobiera aktualną Księgę Zasad (ClientAlignment) ze wszystkimi polami."""
+    with SessionLocal() as session:
+        a = session.query(ClientAlignment).filter_by(client_id=client_id).first()
+        if not a:
+            return {"exists": False, "client_id": client_id}
+
+        return {
+            "exists": True,
+            "client_id": a.client_id,
+            "version": a.version,
+            "strategy_guidelines": a.strategy_guidelines,
+            "scouting_guidelines": a.scouting_guidelines,
+            "research_guidelines": a.research_guidelines,
+            "writing_guidelines": a.writing_guidelines,
+            "gold_examples": a.gold_examples,
+            "avg_rating_at_synthesis": a.avg_rating_at_synthesis,
+            "feedbacks_processed_count": a.feedbacks_processed_count,
+            "last_updated": a.last_updated.isoformat() if a.last_updated else None,
+        }
+
+
+@app.get("/api/alignment/{client_id}/history")
+def get_alignment_history(client_id: int, api_key: str = Security(get_api_key)):
+    """Lista archiwalnych wersji alignment (do rollbacku)."""
+    with SessionLocal() as session:
+        versions = (
+            session.query(AlignmentHistory)
+            .filter_by(client_id=client_id)
+            .order_by(AlignmentHistory.archived_at.desc())
+            .limit(10)
+            .all()
+        )
+        return [{
+            "id": v.id,
+            "version": v.version,
+            "strategy_guidelines_preview": (v.strategy_guidelines or "")[:200],
+            "scouting_guidelines_preview": (v.scouting_guidelines or "")[:200],
+            "research_guidelines_preview": (v.research_guidelines or "")[:200],
+            "writing_guidelines_preview": (v.writing_guidelines or "")[:200],
+            "gold_examples": v.gold_examples,
+            "avg_rating_at_synthesis": v.avg_rating_at_synthesis,
+            "archived_at": v.archived_at.isoformat() if v.archived_at else None,
+        } for v in versions]
+
+
+@app.post("/api/alignment/{client_id}/rollback")
+def trigger_rollback(client_id: int, version: int | None = None, api_key: str = Security(get_api_key)):
+    """Przywraca alignment do wybranej wersji archiwalnej."""
+    from app.agents.teacher import rollback_alignment
+    logger.info(f"[TEACHER] Rollback żądany dla klienta #{client_id}, target_version={version}")
+    with SessionLocal() as session:
+        result = rollback_alignment(session, client_id, target_version=version)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error"))
+        return result
+
+
+# --- TEACHER MANUAL TRIGGER ---
+
+@app.post("/api/alignment/{client_id}/trigger")
+def trigger_teacher(client_id: int, api_key: str = Security(get_api_key)):
+    """Ręczne wymuszenie syntezy Teacher (bez debounce)."""
+    from app.agents.teacher import run_teacher_synthesis
+    logger.info(f"[TEACHER] Ręczne uruchomienie syntezy dla klienta #{client_id}")
+    with SessionLocal() as session:
+        result = run_teacher_synthesis(session, client_id)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Błąd syntezy"))
+        logger.info(
+            f"[TEACHER] Synteza zakończona: v{result.get('version')}, "
+            f"{result.get('feedbacks_processed')} feedbacków"
+        )
+        return result
 
 
 if __name__ == "__main__":

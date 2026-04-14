@@ -52,6 +52,10 @@ _COLUMN_MIGRATIONS = [
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS researcher_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS writer_model VARCHAR DEFAULT 'gemini-3.1-flash-lite-preview'",
 
+    # Tabela: clients — Teacher model + Gatekeeper strictness (Teacher Engine v1)
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS teacher_model VARCHAR DEFAULT 'gemini-3.1-pro-preview'",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS gatekeeper_strictness VARCHAR DEFAULT 'balanced'",
+
     # Tabela: global_companies — numer telefonu z Google Maps
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS phone_number VARCHAR",
 
@@ -59,8 +63,43 @@ _COLUMN_MIGRATIONS = [
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS industry VARCHAR",
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS address VARCHAR",
 
-    # Tabela: leads — UNIQUE constraint (campaign + company = max 1 lead)
-    "ALTER TABLE leads ADD CONSTRAINT uq_lead_campaign_company UNIQUE (campaign_id, global_company_id)",
+    # Tabela: lead_feedbacks — Teacher Engine (RLHF feedback loop)
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS scout_rating INTEGER",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS scout_comments TEXT",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS researcher_rating INTEGER",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS researcher_comments TEXT",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS writer_rating INTEGER",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS writer_comments TEXT",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS corrected_subject VARCHAR",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS corrected_body TEXT",
+    "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS is_processed BOOLEAN DEFAULT FALSE",
+
+    # Tabela: client_alignments — Teacher Engine (Księga Zasad — 4 agenty)
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS strategy_guidelines TEXT",
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS scouting_guidelines TEXT",
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS research_guidelines TEXT",
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS writing_guidelines TEXT",
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS gold_examples JSONB",
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1",
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS avg_rating_at_synthesis FLOAT",
+    "ALTER TABLE client_alignments ADD COLUMN IF NOT EXISTS feedbacks_processed_count INTEGER DEFAULT 0",
+
+    # Tabela: alignment_history — archiwum wersji (rollback support)
+    "ALTER TABLE alignment_history ADD COLUMN IF NOT EXISTS strategy_guidelines TEXT",
+    "ALTER TABLE alignment_history ADD COLUMN IF NOT EXISTS scouting_guidelines TEXT",
+    "ALTER TABLE alignment_history ADD COLUMN IF NOT EXISTS research_guidelines TEXT",
+    "ALTER TABLE alignment_history ADD COLUMN IF NOT EXISTS writing_guidelines TEXT",
+    "ALTER TABLE alignment_history ADD COLUMN IF NOT EXISTS gold_examples JSONB",
+
+    # Tabela: leads — nowa kolumna client_id (deduplikacja per-klient Enterprise Engine v6)
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
+    "UPDATE leads SET client_id = campaigns.client_id FROM campaigns WHERE leads.campaign_id = campaigns.id AND leads.client_id IS NULL",
+    
+    # Tabela: leads — migracja ograniczenia unikalności (z kampanii na klienta)
+    "ALTER TABLE leads DROP CONSTRAINT IF EXISTS uq_lead_campaign_company",
+    # Usuwanie duplikatów przed nałożeniem klucza (zostawiamy najświeższe ID)
+    "DELETE FROM leads a USING leads b WHERE a.id < b.id AND a.client_id = b.client_id AND a.global_company_id = b.global_company_id",
+    "ALTER TABLE leads ADD CONSTRAINT uq_lead_client_company UNIQUE (client_id, global_company_id)",
 
     # Tabela: leads — popraw typy kolumn (NocoDB tworzy NUMERIC zamiast INTEGER)
     "ALTER TABLE leads ALTER COLUMN campaign_id TYPE INTEGER USING campaign_id::integer",
@@ -111,12 +150,16 @@ def init_db() -> None:
         # 1. Tworzenie NOWYCH tabel (istniejące są pomijane)
         Base.metadata.create_all(bind=engine)
         print("✅ Tabele sprawdzone / utworzone:")
-        print("   - clients          (Client DNA)")
-        print("   - global_companies (Knowledge Graph)")
+        print("   - clients              (Client DNA)")
+        print("   - global_companies     (Knowledge Graph)")
         print("   - campaigns")
         print("   - leads")
-        print("   - opt_outs         (RODO Blacklist — hash-only)")
+        print("   - opt_outs             (RODO Blacklist — hash-only)")
         print("   - search_history")
+        print("   - lead_feedbacks       (RLHF — oceny operatora)")
+        print("   - client_alignments    (Teacher — Księga Zasad)")
+        print("   - alignment_history    (Teacher — archiwum wersji)")
+        print("   - campaign_statistics  (Enterprise Stats)")
 
         # 2. Migracje kolumn dla istniejących tabel
         _run_migrations(conn)

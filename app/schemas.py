@@ -115,3 +115,64 @@ class ReplyAnalysis(BaseModel):
     sentiment: str = Field(description="POSITIVE, NEGATIVE, lub NEUTRAL")
     summary: str = Field(description="Jednozdaniowe streszczenie intencji klienta.")
     suggested_action: str = Field(description="Co powinien zrobić człowiek? Np. 'Wyślij Calendly', 'Odpuść', 'Odpowiedz na pytanie X'.")
+
+
+# ===========================================================================
+# TEACHER ENGINE — Structured Output syntezy wiedzy
+# ===========================================================================
+
+class GoldExample(BaseModel):
+    """Pojedynczy przykład contrastive learning (złoty lub czarny)."""
+    subject: str = Field(description="Temat maila.")
+    body_snippet: str = Field(description="Fragment treści maila (max 200 słów) — najważniejszy fragment.")
+    reason: str = Field(description="Dlaczego ten przykład jest wzorcowy (positive) lub fatalny (negative). 1-2 zdania.")
+
+class TeacherSynthesisOutput(BaseModel):
+    """Wynik syntezy wiedzy przez Teacher Agent — nowa Księga Zasad."""
+
+    research_guidelines: str = Field(
+        description="Skondensowane dyrektywy dla Agenta Researchera. "
+        "Każda reguła to dyrektywa systemowa (np. '[PRIORYTET]: Szukaj emaili imiennych, nie biuro@'). "
+        "Deduplikuj — jeśli 3 feedbacki mówią to samo, napisz jedną absolutną regułę. "
+        "Max 15 reguł, posortowanych od najważniejszej."
+    )
+
+    writing_guidelines: str = Field(
+        description="Skondensowane dyrektywy dla Agenta Writera. "
+        "Format: dyrektywy systemowe. Każda zaczyna się od tagu: [ZAKAZ], [PRIORYTET], [STYL], [STRUKTURA]. "
+        "Np. '[ZAKAZ]: Bezwzgl. zakaz słowa współpraca — traktowane jako spam handlowy'. "
+        "Deduplikuj — jeśli 3 feedbacki mówią to samo, jedna absolutna reguła. "
+        "Max 20 reguł, posortowanych od najważniejszej."
+    )
+
+    strategy_guidelines: str = Field(
+        default="",
+        description="Dyrektywy dla Agenta Strategii (generowanie zapytań Google Maps). "
+        "Jeśli feedback wskazuje na złe zapytania, złe branże, złe lokalizacje — sformułuj reguły. "
+        "Np. '[ZAKAZ]: Nie szukaj firm z branży X — nie pasują do ICP'. "
+        "Max 10 reguł. Jeśli brak feedbacku dot. strategii → puste pole."
+    )
+
+    scouting_guidelines: str = Field(
+        default="",
+        description="Dyrektywy dla Agenta Scouta (filtracja leadów). "
+        "Jeśli feedback wskazuje na przepuszczanie złych leadów lub odrzucanie dobrych — sformułuj reguły. "
+        "Np. '[PRIORYTET]: Przepuszczaj firmy jednoosobowe — operator je akceptuje'. "
+        "Max 10 reguł. Jeśli brak feedbacku dot. scoutingu → puste pole."
+    )
+
+    positive_examples: List[GoldExample] = Field(
+        description="Top 3 wzorcowe przykłady maili (ocena 4-5). "
+        "Wybierz NAJBARDZIEJ różnorodne — różne branże, tony, podejścia. "
+        "Jeśli jest corrected_body — użyj poprawionej wersji."
+    )
+
+    negative_examples: List[GoldExample] = Field(
+        description="Top 3 antywzorce (ocena 1-2). "
+        "Dla każdego dopisz PRECYZYJNY powód — co dokładnie jest złe i dlaczego."
+    )
+
+    synthesis_reasoning: str = Field(
+        description="Krótkie podsumowanie procesu syntezy: jakie konflikty rozwiązałeś, "
+        "co nadpisałeś, co zdeduplikowałeś. 3-5 zdań."
+    )

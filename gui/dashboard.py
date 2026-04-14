@@ -791,7 +791,7 @@ try:
             if st.button("1. Szukaj (Scout)", type="primary"):
                 camp = session.query(Campaign).filter(Campaign.client_id == client.id, Campaign.status == "ACTIVE").first()
                 if camp:
-                    strategy = generate_strategy(client, camp.strategy_prompt, camp.id)
+                    strategy = generate_strategy(client, camp.strategy_prompt, camp.id, session=session)
                     if strategy and strategy.search_queries:
                         asyncio.run(run_scout_async(session, camp.id, strategy))
                         st.success("Scout zakończył.")

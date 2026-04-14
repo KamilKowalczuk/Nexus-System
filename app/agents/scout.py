@@ -105,6 +105,7 @@ def _get_client_icp(session: Session, campaign_id: int) -> dict:
                 "value_proposition": "", "negative_constraints": "", "strategy_prompt": ""}
     c = campaign.client
     return {
+        "client_id": c.id,
         "name": c.name or "",
         "icp": c.ideal_customer_profile or "",
         "industry": c.industry or "",
@@ -115,13 +116,13 @@ def _get_client_icp(session: Session, campaign_id: int) -> dict:
         "tone_of_voice": (getattr(c, "tone_of_voice", None) or "").strip(),
         "strategy_prompt": campaign.strategy_prompt or "",
         "scout_model": getattr(c, "scout_model", None) or DEFAULT_MODEL,
+        "gatekeeper_strictness": getattr(c, "gatekeeper_strictness", "balanced"),
     }
 
-async def _ai_filter_batch(raw_items: List[Dict], client_data: Dict) -> List[str]:
+async def _ai_filter_batch(raw_items: List[Dict], client_data: Dict, session: Session | None = None) -> List[str]:
     """
-    AI GATEKEEPER v3: Zbalansowany filtr — przepuszcza rozsądne dopasowania,
-    odrzuca oczywiste śmieci. Filozofia: lepiej mieć lead do zweryfikowania
-    niż stracić potencjalnego klienta.
+    AI GATEKEEPER v4: Filtr z konfiguralną surowością + Teacher alignment.
+    Poziomy: strict (odrzuca wątpliwe), balanced (domyślny), permissive (przepuszcza wątpliwe).
     """
     candidates = []
     for item in raw_items:
@@ -165,7 +166,49 @@ Zakazy firm/branż do zastosowania:
 Jeśli masz wątpliwości czy firma pasuje do zakazu — ODRZUĆ.
 """
 
+    # --- STRICTNESS LEVELS ---
+    strictness = client_data.get("gatekeeper_strictness", "balanced")
+    strictness_rules = {
+        "strict": (
+            "TRYB SUROWY: Bądź BEZWZGLĘDNY. Przepuszczaj TYLKO firmy, które w 100% pasują do ICP. "
+            "Przy JAKICHKOLWIEK wątpliwościach — ODRZUĆ. Lepiej stracić dobry lead niż przepuścić zły."
+        ),
+        "balanced": (
+            "TRYB ZBALANSOWANY: Przepuszczaj firmy rozsądnie pasujące do ICP. "
+            "Odrzucaj oczywiste śmieci i niezgodności branżowe. Wątpliwe przypadki — odrzuć."
+        ),
+        "permissive": (
+            "TRYB OTWARTY: Przepuszczaj firmy, które MOGĄ pasować do ICP. "
+            "Odrzucaj TYLKO oczywiste śmieci (portale, agregatory, instytucje publiczne, zakazy). "
+            "Wątpliwe przypadki — PRZEPUŚĆ do dalszej analizy."
+        ),
+    }
+    strictness_instruction = strictness_rules.get(strictness, strictness_rules["balanced"])
+    logger.info(f"[SCOUT] Gatekeeper strictness: {strictness}")
+
+    # --- TEACHER ALIGNMENT (scouting_guidelines) ---
+    scouting_alignment_block = ""
+    if session:
+        try:
+            from app.database import ClientAlignment
+            client_id = client_data.get("client_id")
+            if client_id:
+                alignment = session.query(ClientAlignment).filter_by(client_id=client_id).first()
+                if alignment and alignment.scouting_guidelines:
+                    scouting_alignment_block = (
+                        f"\n=== 🧠 DYNAMICZNA WIEDZA (BEZWZGL. PRIORYTET — v{alignment.version}) ===\n"
+                        f"{alignment.scouting_guidelines}\n"
+                        f"=== KONIEC DYNAMICZNEJ WIEDZY ===\n"
+                    )
+                    logger.info(f"[SCOUT] Teacher Alignment v{alignment.version} wstrzyknięty")
+        except Exception as e:
+            logger.debug(f"[SCOUT] Teacher alignment niedostępny: {e}")
+
     system_prompt = f"""Jesteś filtrem jakości leadów B2B. Twoja robota: przepuścić firmy pasujące do profilu klienta i bezwzględnie blokować te niezgodne z zakazami.
+
+=== POZIOM SUROWOŚCI ===
+{strictness_instruction}
+{scouting_alignment_block}
 {hard_block_section}
 === PROFIL KLIENTA ===
 Firma nadawcy: {client_data.get('name', '')}
@@ -175,16 +218,16 @@ Kogo szuka (ICP): {icp}
 Tryb: {mode} (SALES = szuka klientów do sprzedaży, JOB_HUNT = szuka pracodawców)
 
 === PRIORYTET DECYZYJNY ===
-1. NAJPIERW sprawdź TWARDE ZAKAZY (sekcja powyżej). Jeśli firma pasuje do zakazu → ODRZUĆ. Koniec analizy dla tej firmy.
-2. Czy KATEGORIA pasuje do ICP? Bądź BEZWZGLĘDNY. Jeśli szukamy lekarzy, a to jest agencja marketingowa dla lekarzy — ODRZUĆ. Jeśli szukamy szpitali, a to jest firma produkująca łóżka — ODRZUĆ. Kategoria i działalność musi w 100% pasować do ICP.
-3. Czy SKALA jest akceptowalna? Odrzucaj ewidentne korporacje i holdingi z wieloma oddziałami. Instytucje publiczne (urzędy, NFZ, ZUS) — zawsze odrzuć, chyba że ICP tego wymaga.
+1. NAJPIERW sprawdź TWARDE ZAKAZY (sekcja powyżej). Jeśli firma pasuje do zakazu → ODRZUĆ. Koniec analizy.
+2. Czy KATEGORIA pasuje do ICP? Kategoria i działalność musi pasować do ICP. Jeśli szukamy firm z branży X, a to jest firma obsługująca branżę X (dostawca, nie klient) — ODRZUĆ.
+3. Czy SKALA jest akceptowalna? Odrzucaj ewidentne korporacje i holdingi z wieloma oddziałami. Instytucje publiczne (urzędy, ZUS) — odrzuć, chyba że ICP tego wymaga.
 4. Czy to ewidentna konkurencja klienta? (DOKŁADNIE ta sama usługa = ODRZUĆ w trybie SALES).
 
 === KIEDY ODRZUCIĆ ===
 - Pasuje do TWARDYCH ZAKAZÓW — zawsze, bez wyjątków
 - Domena to znany portal/agregator/marketplace
-- Ewidentna wielka korporacja lub instytucja publiczna (NFZ, ZUS, urząd, szpital publiczny)
-- Niezgodność branży z ICP (nawet jeśli branża "krąży" wokół ICP, masz odrzucać, o ile nie jest DOKŁADNYM celem)
+- Ewidentna wielka korporacja lub instytucja publiczna (urząd, ZUS, ministerstwo)
+- Niezgodność branży z ICP (nawet jeśli branża "krąży" wokół ICP)
 
 === KIEDY PRZEPUŚCIĆ ===
 - Firma nie pasuje do żadnego zakazu i jest w obszarze ICP
@@ -204,7 +247,7 @@ Dla każdego kandydata: NAJPIERW sprawdź zakazy, potem ICP. Zatwierdź tylko fi
         print(f"      🤖 [AI GATEKEEPER] Analizuję {len(candidates)} kandydatów...")
         result = await gatekeeper.ainvoke([
             SystemMessage(content=system_prompt),
-            HumanMessage(content="Przeprowadź selekcję. Bądź wyjątkowo surowym sędzią. Odrzuć wszystko, co nie jest dokładnym celem wg ICP. Lepiej odrzucić dobry lead niż przepuścić zły!"),
+            HumanMessage(content=f"Przeprowadź selekcję w trybie: {strictness.upper()}. Trzymaj się poziomu surowości z instrukcji."),
         ])
 
         valid_domains = [v.domain for v in result.valid_domains]
@@ -220,6 +263,12 @@ Dla każdego kandydata: NAJPIERW sprawdź zakazy, potem ICP. Zatwierdź tylko fi
 # --- FUNKCJE BAZODANOWE (Wrapper) ---
 
 def _db_get_valid_queries(session: Session, campaign_id: int, raw_queries: List[SearchQuery]) -> tuple[List[SearchQuery], int]:
+    campaign_obj = session.query(Campaign).filter(Campaign.id == campaign_id).first()
+    client_id = campaign_obj.client_id if campaign_obj else None
+    
+    valid_queries = []
+    print(f"\n🧠 [SCOUT MEMORY] Analizuję {len(raw_queries)} propozycji strategii...")
+
     campaign_obj = session.query(Campaign).filter(Campaign.id == campaign_id).first()
     client_id = campaign_obj.client_id if campaign_obj else None
     
@@ -255,9 +304,15 @@ def _db_update_history_results(session: Session, entry_id: int, count: int):
 
 def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Dict], query: str, approved_domains: List[str]) -> int:
     """
-    Wersja v2: Przyjmuje listę approved_domains z AI.
+    Wersja v3: Obsługa deduplikacji na poziomie klienta (DEDUP CROSS-CAMPAIGN).
     """
     added_count = 0
+    
+    # 0. Pobranie client_id
+    campaign = session.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign: return 0
+    client_id = campaign.client_id
+
     
     # 1. Filtrowanie po liście od AI
     # approved_domains są już po _clean_domain w funkcji AI, ale dla pewności:
@@ -349,26 +404,26 @@ def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Di
 
         if company_obj.id in ids_in_this_campaign: continue
 
-        # CROSS-CAMPAIGN DEDUP: Sprawdź czy ta firma nie jest JUŻ w jakiejkolwiek kampanii
+        # CROSS-CAMPAIGN DEDUP: Sprawdź czy ten KLIENT już obsługuje tę firmę
         existing_lead = session.query(Lead).filter(
+            Lead.client_id == client_id,
             Lead.global_company_id == company_obj.id,
             Lead.status.in_(["SENT", "DRAFTED", "ANALYZED", "SCRAPED", "NEW"])
         ).first()
 
         if existing_lead:
-            # Jeśli SENT → karencja 30 dni
+            # Jeśli SENT → karencja
             if existing_lead.status == "SENT" and existing_lead.sent_at:
                 days_since = (datetime.now(PL_TZ) - existing_lead.sent_at).days
                 if days_since < GLOBAL_CONTACT_COOLDOWN:
-                    print(f"      ⏳ {domain}: KARENCJA ({days_since} dni). Skip.")
                     continue
-            # Jeśli w toku (DRAFTED/ANALYZED/NEW) → pomiń, firma jest już obsługiwana
+            # Jeśli w toku → pominiecie
             elif existing_lead.status in ("DRAFTED", "ANALYZED", "SCRAPED", "NEW"):
-                print(f"      🔄 {domain}: już w pipeline (lead #{existing_lead.id}, {existing_lead.status}). Skip.")
                 continue
 
         new_lead = Lead(
             campaign_id=campaign_id,
+            client_id=client_id, # Przypisujemy bezpośrednio do klienta
             global_company_id=company_obj.id,
             status="NEW",
             ai_confidence_score=company_obj.quality_score or 50
@@ -376,6 +431,7 @@ def _db_process_scraped_items(session: Session, campaign_id: int, items: List[Di
         new_leads_to_add.append(new_lead)
         ids_in_this_campaign.add(company_obj.id)
         added_count += 1
+
 
     if new_leads_to_add:
         try:
@@ -491,7 +547,7 @@ async def run_scout_async(session: Session, campaign_id: int, strategy: Strategy
             save_used_queries(campaign_id, [query])
 
             # --- AI GATEKEEPER STEP ---
-            approved_domains = await _ai_filter_batch(items, client_data)
+            approved_domains = await _ai_filter_batch(items, client_data, session=session)
             
             # STATS: Scouting metryki
             stats_manager.increment_scanned(session, client_id, len(items))

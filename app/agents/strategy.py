@@ -3,9 +3,10 @@ import re
 import logging
 from langchain_core.messages import SystemMessage, HumanMessage
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
 
 # Importy z Twojej aplikacji
-from app.database import Client
+from app.database import Client, SearchHistory, ClientAlignment
 from app.schemas import StrategyOutput, SearchQuery
 from app.memory_utils import load_used_queries
 from app.model_factory import create_structured_llm, DEFAULT_MODEL
@@ -15,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("strategy")
 
 
-def generate_strategy(client: Client, raw_intent: str, campaign_id: int) -> StrategyOutput:
+def generate_strategy(client: Client, raw_intent: str, campaign_id: int, session: Session | None = None) -> StrategyOutput:
     """
     Generuje UNIKALNE zapytania do Google Maps.
     Obsługuje dwa tryby: SALES (Szukanie klientów) oraz JOB_HUNT (Szukanie pracodawców).
@@ -32,6 +33,49 @@ def generate_strategy(client: Client, raw_intent: str, campaign_id: int) -> Stra
     uvp = client.value_proposition or ""
     icp = client.ideal_customer_profile or ""
     constraints = client.negative_constraints or ""
+
+    # 3. SEARCH HISTORY STATS (self-learning — które zapytania dają wyniki)
+    search_stats_block = ""
+    strategy_alignment_block = ""
+    if session:
+        try:
+            # Top performing queries (yield rate)
+            from sqlalchemy import func, desc
+            stats = (
+                session.query(
+                    SearchHistory.query_text,
+                    func.sum(SearchHistory.results_found).label("total_results"),
+                    func.count(SearchHistory.id).label("times_used"),
+                )
+                .filter(SearchHistory.client_id == client.id)
+                .group_by(SearchHistory.query_text)
+                .order_by(desc("total_results"))
+                .limit(15)
+                .all()
+            )
+            if stats:
+                top_queries = [f"  - \"{s.query_text}\" → {s.total_results} wyników ({s.times_used}x)" for s in stats[:10] if s.total_results > 0]
+                zero_queries = [f"  - \"{s.query_text}\" → 0 wyników" for s in stats if s.total_results == 0]
+                parts = []
+                if top_queries:
+                    parts.append("SKUTECZNE ZAPYTANIA (dawały wyniki):\n" + "\n".join(top_queries))
+                if zero_queries:
+                    parts.append("NIESKUTECZNE (0 wyników — unikaj podobnych):\n" + "\n".join(zero_queries[:5]))
+                if parts:
+                    search_stats_block = "\n=== 📊 STATYSTYKI HISTORYCZNE ===\n" + "\n".join(parts) + "\nWYCIĄGNIJ WNIOSKI: jakie synonimy/formaty działają, a jakie nie.\n"
+                    logger.info(f"[STRATEGY] Search stats: {len(top_queries)} skutecznych, {len(zero_queries)} pustych")
+
+            # Teacher alignment (strategy_guidelines)
+            alignment = session.query(ClientAlignment).filter_by(client_id=client.id).first()
+            if alignment and alignment.strategy_guidelines:
+                strategy_alignment_block = (
+                    f"\n=== 🧠 DYNAMICZNA WIEDZA KLIENTA (BEZWZGL. PRIORYTET — v{alignment.version}) ===\n"
+                    f"{alignment.strategy_guidelines}\n"
+                    f"=== KONIEC DYNAMICZNEJ WIEDZY ===\n"
+                )
+                logger.info(f"[STRATEGY] Teacher Alignment v{alignment.version} wstrzyknięty")
+        except Exception as e:
+            logger.debug(f"[STRATEGY] Stats/alignment niedostępne: {e}")
 
     if mode == "JOB_HUNT":
         system_prompt = f"""Jesteś łowcą ukrytych perełek rynku pracy. Generujesz zapytania do Google Maps, które odkryją firmy NIEDOSTĘPNE na portalach rekrutacyjnych.
@@ -73,7 +117,7 @@ Wygeneruj 5-8 precyzyjnych, RÓŻNORODNYCH zapytań. Format: czysty tekst do wpi
 
     else:
         system_prompt = f"""Jesteś strategiem lead generation B2B. Generujesz zapytania do Google Maps.
-
+{strategy_alignment_block}
 === NASZ KLIENT ===
 Firma: {sender_name}
 Branża: {sender_industry}
@@ -88,14 +132,12 @@ Cel: {raw_intent}
 
 === CZARNA LISTA (nie powtarzaj!) ===
 {used_queries_str}
-
+{search_stats_block}
 === ⚠️ KRYTYCZNA ZASADA: KRÓTKIE ZAPYTANIA! ⚠️ ===
 
 Google Maps zwraca WIĘCEJ wyników na KRÓTKIE zapytania!
-- ✅ "przychodnia lublin" → 50 wyników 
-- ✅ "NZOZ zamość" → 30 wyników
-- ✅ "centrum medyczne chełm" → 25 wyników
-- ❌ "przychodnia kontrakt NFZ specjalizacja medycyna rodzinna Krasnobród" → 1 wynik!
+- ✅ "[synonim branżowy] [miasto]" → 30-50 wyników
+- ❌ "[synonim branżowy] [pełny opis specjalizacji] [miasto]" → 1-3 wyniki!
 
 KAŻDE zapytanie: MAKSYMALNIE 2-4 słowa! (synonim + miasto)
 
@@ -103,19 +145,19 @@ KAŻDE zapytanie: MAKSYMALNIE 2-4 słowa! (synonim + miasto)
 
 1. FORMAT ZAPYTANIA: [synonim branżowy] + [miasto z ICP]
     Każde zapytanie MAKSYMALNIE 2-4 słowa!
-    Przykłady formy:
-    - "przychodnia [Miasto]"
-    - "lekarz POZ [Miasto z ICP]"
-    - "NZOZ [Mniejsza miejscowość]"
+    Na podstawie ICP i branży nadawcy, SAM wymyśl synonimy branżowe dla firm docelowych.
+    Np. jeśli szukamy przychodni: "przychodnia", "NZOZ", "centrum medyczne", "ośrodek zdrowia"
+    Np. jeśli szukamy firm IT: "software house", "agencja IT", "studio programistyczne"
+    Np. jeśli szukamy restauracji: "restauracja", "bistro", "catering"
 
 2. RÓŻNICUJ SYNONIMY w ramach docelowych miast:
    Każdy synonim daje INNE wyniki w Google Maps!
-   Synonimy: przychodnia, NZOZ, centrum medyczne, ośrodek zdrowia, poradnia, praktyka. 
+   Wygeneruj MIN. 3-5 RÓŻNYCH synonimów branżowych na podstawie ICP.
 
 3. GEO-TARGETING: WYKORZYSTAJ LOKALIZACJE Z ICP!
    Zidentyfikuj z bloku "KOGO SZUKAMY (ICP)" oraz "Cel" interesujący klienta obszar geograficzny (województwo, region, miasta).
    Wygeneruj zapytania TYLKO dla miast należących do tego obszaru docelowego!
-   Rotuj miasta - od największych do małych miasteczek w tym regionie (jeśli obszar to np. Wielkopolska, wybierz Poznań, Kalisz, Konin, Piła itp.).
+   Rotuj miasta - od największych do małych miasteczek w tym regionie.
 
 4. WYBÓR ŹRÓDŁA (source):
    - "maps" — DOMYŚLNIE (90% zapytań)

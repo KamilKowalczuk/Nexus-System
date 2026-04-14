@@ -121,7 +121,7 @@ _OPENING_STRATEGIES_COLD: list[dict] = [
             '3. Zadaj JEDNO konkretne pytanie o ich proces/wyzwanie — potem daj 1 zdanie '
             'dlaczego pytasz (z własnego doświadczenia, NIE z ich strony).\n'
             '   Przykład struktury: "Jak u Państwa wygląda [proces z danych]? '
-            'Pytam, bo w podobnych placówkach to bywa problematyczne."\n'
+            'Pytam, bo w podobnych firmach to bywa problematyczne."\n'
             '   WAŻNE: Pytanie MUSI dotyczyć czegoś widocznego w danych. Nie zmyślaj.'
         ),
     },
@@ -129,10 +129,10 @@ _OPENING_STRATEGIES_COLD: list[dict] = [
         "id": "one_fact_one_question",
         "name": "Fakt + Pytanie",
         "instruction": (
-            '3. Weź JEDEN konkretny fakt z danych o odbiorcy (np. zakres usług, programy, '
-            'liczbę poradni) i zadaj pytanie, które naturalnie z tego wynika.\n'
+            '3. Weź JEDEN konkretny fakt z danych o odbiorcy (np. zakres usług, '
+            'liczbę oddziałów, skalę działalności) i zadaj pytanie, które naturalnie z tego wynika.\n'
             '   Przykład: "Prowadzicie [fakt z danych]. Przy takiej skali — kto u Was pilnuje '
-            'rozliczeń na bieżąco?"\n'
+            'procesów na bieżąco?"\n'
             '   WAŻNE: Fakt MUSI być z researchu. Pytanie MUSI być naturalne, krótkie, '
             'ludzkie. NIE pisz "to zwykle sygnalizuje" ani "w podobnych strukturach".'
         ),
@@ -239,24 +239,23 @@ _FEW_SHOT_POOL: dict[str, list[dict]] = {
     "professional": [
         {
             "label": "cold, otwarcie: icebreaker ze strony, CTA: kto odpowiada",
-            "subject": "koordynacja dokumentacji",
+            "subject": "koordynacja procesów",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Na Państwa stronie {_widzialem}, że prowadzicie opiekę koordynowaną "
-                "w trzech ścieżkach — kardiologia, diabetologia i endokrynologia.</p>"
-                "<p>Kto u Państwa odpowiada za koordynację sprawozdawczości "
-                "z tych trzech programów — dedykowany zespół czy lekarze?</p>"
+                "<p>Na Państwa stronie {_widzialem}, że prowadzicie działalność "
+                "w kilku obszarach jednocześnie — to spory zakres do koordynacji.</p>"
+                "<p>Czy za spójność tych procesów odpowiada dedykowany zespół, "
+                "czy to rozproszone po działach?</p>"
             ),
         },
         {
-            "label": "cold, otwarcie: fakt regulacyjny, CTA: czy śledzą",
-            "subject": "nowe wymogi od stycznia",
+            "label": "cold, otwarcie: obserwacja branżowa, CTA: czy śledzą",
+            "subject": "zmiany w branży",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Od tego roku NFZ wprowadził obowiązek utrzymania aktywności "
-                "pacjentów w opiece koordynowanej — brak aktywności przez 3 miesiące "
-                "oznacza utratę podwyższonej stawki.</p>"
-                "<p>Śledzą Państwo te zmiany na bieżąco?</p>"
+                "<p>W ostatnich miesiącach firmy z Państwa branży coraz częściej "
+                "sygnalizują rosnące obciążenie dokumentacyjne.</p>"
+                "<p>Czy to temat, który Państwo również obserwują?</p>"
             ),
         },
         {
@@ -264,87 +263,86 @@ _FEW_SHOT_POOL: dict[str, list[dict]] = {
             "subject": "obieg dokumentów",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Przy tak szerokim zakresie kontraktu — POZ, specjalistyka "
-                "i profilaktyka — pojawia się pytanie o obieg dokumentacji.</p>"
-                "<p>Jeden system obsługuje wszystkie zakresy, "
+                "<p>Przy tak szerokim zakresie działalności — pojawia się pytanie "
+                "o obieg dokumentacji wewnętrznej.</p>"
+                "<p>Jeden system obsługuje wszystkie obszary, "
                 "czy każdy idzie osobnym torem?</p>"
             ),
         },
         {
             "label": "follow-up, otwarcie: obserwacja branżowa, CTA: doświadczenie",
-            "subject": "Re: koordynacja dokumentacji",
+            "subject": "Re: koordynacja procesów",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_wracam} z jedną obserwacją. Przychodnie, które przeszły "
-                "kontrolę NFZ w ostatnim roku, najczęściej wskazują braki "
-                "w dokumentacji opieki koordynowanej.</p>"
+                "<p>{_wracam} z jedną obserwacją. Firmy o podobnej skali "
+                "często wskazują obieg dokumentacji jako obszar, "
+                "w którym tracą najwięcej czasu.</p>"
                 "<p>Mieli Państwo do czynienia z taką sytuacją?</p>"
             ),
         },
         {
-            "label": "follow-up, otwarcie: konkretna dana, CTA: niewykorzystane środki",
-            "subject": "Re: koordynacja dokumentacji",
+            "label": "follow-up, otwarcie: konkretna dana, CTA: optymalizacja",
+            "subject": "Re: koordynacja procesów",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>{_zastawialem} nad jedną kwestią — przy tak szerokim zakresie "
-                "kontraktu, czy ktoś u Państwa weryfikuje, czy nie przysługują "
-                "dodatkowe środki z nowych programów NFZ?</p>"
+                "działalności, czy ktoś u Państwa weryfikuje, "
+                "które procesy pochłaniają nieproporcjonalnie dużo czasu?</p>"
             ),
         },
     ],
     "formal": [
         {
             "label": "cold, otwarcie: icebreaker ze strony, CTA: wydzielona funkcja",
-            "subject": "struktura administracyjna",
+            "subject": "struktura organizacyjna",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Przejrzałem zakres Państwa działalności — POZ, specjalistyka "
-                "i diagnostyka w jednej strukturze organizacyjnej.</p>"
-                "<p>Czy zarządzanie zgodnością kontraktową to wydzielona funkcja "
-                "w Państwa placówce, czy dodatkowy obowiązek personelu medycznego?</p>"
+                "<p>Przejrzałem zakres Państwa działalności — kilka linii usługowych "
+                "w jednej strukturze organizacyjnej.</p>"
+                "<p>Czy zarządzanie jakością i zgodnością procesów to wydzielona funkcja, "
+                "czy dodatkowy obowiązek zespołu operacyjnego?</p>"
             ),
         },
         {
-            "label": "cold, otwarcie: fakt regulacyjny, CTA: dostosowanie procesów",
-            "subject": "nowe kryteria oceny NFZ",
+            "label": "cold, otwarcie: obserwacja branżowa, CTA: dostosowanie procesów",
+            "subject": "nowe wymagania branżowe",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>W tym roku NFZ zaostrzył kryteria oceny placówek realizujących "
-                "programy profilaktyczne — nowe wskaźniki i nowe terminy "
-                "sprawozdawcze.</p>"
-                "<p>Czy Państwa placówka miała okazję dostosować swoje procesy "
+                "<p>Firmy z Państwa sektora coraz częściej mierzą się "
+                "z rosnącymi wymaganiami regulacyjnymi i dokumentacyjnymi.</p>"
+                "<p>Czy Państwa organizacja miała okazję dostosować swoje procesy "
                 "do tych zmian?</p>"
             ),
         },
         {
             "label": "follow-up, otwarcie: obserwacja branżowa, CTA: model organizacyjny",
-            "subject": "Re: nowe kryteria oceny NFZ",
+            "subject": "Re: nowe wymagania branżowe",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Wracam do tematu z dodatkową obserwacją. Placówki o zbliżonym "
+                "<p>Wracam do tematu z dodatkową obserwacją. Firmy o zbliżonym "
                 "profilu coraz częściej wydzielają osobną funkcję "
-                "do zarządzania zgodnością rozliczeń.</p>"
+                "do zarządzania zgodnością procesów.</p>"
                 "<p>Czy to model, który Państwo również rozważają?</p>"
             ),
         },
         {
             "label": "cold, otwarcie: pytanie wprost, CTA: integracja systemów",
-            "subject": "integracja dokumentacji",
+            "subject": "integracja danych",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Zauważyłem, że Państwa placówka realizuje świadczenia zarówno "
-                "w ramach NFZ, jak i prywatnie.</p>"
-                "<p>Jak wygląda u Państwa integracja dokumentacji medycznej "
-                "z raportowaniem kontraktowym — jeden system, czy rozdzielone procesy?</p>"
+                "<p>Zauważyłem, że Państwa firma obsługuje kilka "
+                "odrębnych linii biznesowych jednocześnie.</p>"
+                "<p>Jak wygląda u Państwa integracja danych "
+                "między tymi obszarami — jeden system, czy rozdzielone procesy?</p>"
             ),
         },
         {
             "label": "follow-up, otwarcie: zmiana perspektywy, CTA: obciążenie kadr",
-            "subject": "Re: integracja dokumentacji",
+            "subject": "Re: integracja danych",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Patrząc na ten temat z innej strony — przy wielozakresowym "
-                "kontrakcie, obciążenie administracyjne personelu medycznego "
+                "<p>Patrząc na ten temat z innej strony — przy kilku równoległych "
+                "procesach, obciążenie administracyjne zespołu "
                 "bywa istotnym problemem.</p>"
                 "<p>Czy to kwestia, z którą Państwo się mierzą?</p>"
             ),
@@ -352,115 +350,114 @@ _FEW_SHOT_POOL: dict[str, list[dict]] = {
     ],
     "direct": [
         {
-            "label": "cold, otwarcie: icebreaker ze strony, CTA: kontrola",
+            "label": "cold, otwarcie: icebreaker ze strony, CTA: wyzwania",
             "subject": "jedno pytanie",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_widzialem} że realizujecie kilka programów NFZ jednocześnie. "
-                "Przy tej skali kontrola NFZ to kwestia czasu.</p>"
-                "<p>Byliście Państwo kontrolowani w ostatnim roku?</p>"
+                "<p>{_widzialem} że prowadzicie działalność w kilku obszarach jednocześnie. "
+                "Przy tej skali — koordynacja procesów musi być wyzwaniem.</p>"
+                "<p>Czy to temat, który Państwo aktywnie optymalizują?</p>"
             ),
         },
         {
-            "label": "cold, otwarcie: fakt regulacyjny, CTA: świadomość zmian",
-            "subject": "zmiana zasad od stycznia",
+            "label": "cold, otwarcie: obserwacja branżowa, CTA: świadomość zmian",
+            "subject": "zmiany w Państwa branży",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>NFZ systematycznie zaostrza kryteria weryfikacji rozliczeń opieki koordynowanej "
-                "— z naciskiem na progi aktywności i poprawność ścieżek pacjenta. Część placówek "
-                "dowiaduje się o nieszczelnościach dopiero przy rozliczeniu kwartalnym.</p>"
-                "<p>Śledzicie Państwo te zmiany na bieżąco?</p>"
+                "<p>Firmy z Państwa sektora coraz częściej sygnalizują, "
+                "że rosnące wymagania dokumentacyjne zajmują więcej czasu "
+                "niż sama działalność operacyjna.</p>"
+                "<p>Obserwujecie to u siebie?</p>"
             ),
         },
         {
             "label": "follow-up, otwarcie: obserwacja branżowa, CTA: organizacja",
-            "subject": "Re: zmiana zasad od stycznia",
+            "subject": "Re: zmiany w Państwa branży",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_wracam} z jedną obserwacją — w placówkach o podobnej skali "
-                "sprawozdawczość do NFZ często spada na barki lekarzy, "
+                "<p>{_wracam} z jedną obserwacją — w firmach o podobnej skali "
+                "dokumentacja i raportowanie często spadają na barki specjalistów, "
                 "zamiast być wydzielonym procesem.</p>"
                 "<p>Jak to jest zorganizowane u Państwa?</p>"
             ),
         },
         {
-            "label": "cold, otwarcie: pytanie wprost, CTA: system gabinetowy",
-            "subject": "tagowanie wizyt w systemie",
+            "label": "cold, otwarcie: pytanie wprost, CTA: systemy",
+            "subject": "podział procesów w systemie",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Przy kontrakcie NFZ w kilku zakresach — kluczowe jest, "
-                "czy system gabinetowy prawidłowo rozdziela wizyty "
-                "pod odpowiedni kontrakt.</p>"
-                "<p>Jak Państwa system radzi sobie z tym rozdziałem?</p>"
+                "<p>Przy kilku liniach usługowych jednocześnie — kluczowe jest, "
+                "czy system prawidłowo rozdziela dane "
+                "pod odpowiednie procesy.</p>"
+                "<p>Jak Państwa systemy radzą sobie z tym rozdziałem?</p>"
             ),
         },
         {
-            "label": "follow-up, otwarcie: konkretna dana, CTA: weryfikacja środków",
-            "subject": "Re: tagowanie wizyt w systemie",
+            "label": "follow-up, otwarcie: konkretna dana, CTA: weryfikacja",
+            "subject": "Re: podział procesów w systemie",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>{_wracam} z innym pytaniem — czy ktoś u Państwa weryfikuje, "
-                "czy z obecnego kontraktu NFZ wykorzystujecie wszystkie "
-                "przysługujące środki?</p>"
+                "czy obecne procesy w pełni wykorzystują możliwości, "
+                "które daje Wam skala działalności?</p>"
             ),
         },
     ],
     "technical": [
         {
             "label": "cold, otwarcie: icebreaker ze strony, CTA: weryfikacja danych",
-            "subject": "trzy procesy sprawozdawcze",
+            "subject": "trzy procesy równolegle",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_widzialem} że Państwa placówka realizuje opiekę koordynowaną, "
-                "CHUK i standardowe świadczenia POZ jednocześnie — "
-                "to trzy odrębne procesy sprawozdawcze.</p>"
+                "<p>{_widzialem} że Państwa firma prowadzi kilka odrębnych "
+                "procesów operacyjnych jednocześnie — "
+                "to odrębne ścieżki raportowania.</p>"
                 "<p>Jak wygląda u Państwa weryfikacja poprawności danych "
-                "przed wysyłką do płatnika?</p>"
+                "przed zamknięciem okresu?</p>"
             ),
         },
         {
-            "label": "cold, otwarcie: obserwacja branżowa, CTA: monitoring kodowania",
-            "subject": "kodowanie ICD-10",
+            "label": "cold, otwarcie: obserwacja branżowa, CTA: monitoring",
+            "subject": "spójność danych",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>Pracując z placówkami o podobnym zakresie kontraktu, "
-                "widzimy powtarzający się problem — błędy w kodowaniu procedur "
-                "ICD-10 przy wizytach koordynowanych vs. standardowych POZ.</p>"
-                "<p>Monitorujecie Państwo poprawność kodowania w raportach?</p>"
+                "<p>Przy firmach o podobnym zakresie działalności "
+                "powtarzający się problem to rozbieżności w danych "
+                "między różnymi systemami operacyjnymi.</p>"
+                "<p>Monitorujecie Państwo spójność danych między systemami?</p>"
             ),
         },
         {
-            "label": "follow-up, otwarcie: wymóg NFZ, CTA: dane liczbowe",
-            "subject": "Re: kodowanie ICD-10",
+            "label": "follow-up, otwarcie: obserwacja techniczna, CTA: dane liczbowe",
+            "subject": "Re: spójność danych",
             "body": (
                 "<p>Dzień dobry,</p>"
-                "<p>{_wracam} z konkretną obserwacją — NFZ szczegółowo weryfikuje "
-                "utrzymanie określonego poziomu aktywności pacjentów w programie "
-                "opieki koordynowanej. Brak spełnienia warunków oznacza ryzyko "
-                "utraty podwyższonej stawki kapitacyjnej.</p>"
-                "<p>Sprawdzali Państwo, jak ten wskaźnik wygląda w danych Państwa placówki?</p>"
+                "<p>{_wracam} z konkretną obserwacją — firmy z kilkoma "
+                "równoległymi procesami często tracą czas na ręczne "
+                "uzgadnianie danych między systemami.</p>"
+                "<p>Sprawdzali Państwo, ile czasu ten proces zajmuje u Was miesięcznie?</p>"
             ),
         },
         {
             "label": "cold, otwarcie: pytanie wprost, CTA: architektura techniczna",
-            "subject": "podział kontraktów w systemie",
+            "subject": "podział danych w systemie",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>Na Państwa stronie widziałem zakres obejmujący "
-                "poradnie specjalistyczne i POZ w jednej strukturze.</p>"
-                "<p>Jak Państwo rozwiązali technicznie podział wizyt "
-                "pod odpowiednie kontrakty w systemie gabinetowym?</p>"
+                "kilka linii usługowych w jednej strukturze.</p>"
+                "<p>Jak Państwo rozwiązali technicznie podział danych "
+                "pod odpowiednie procesy w systemie?</p>"
             ),
         },
         {
             "label": "follow-up, otwarcie: zmiana perspektywy, CTA: podział obowiązków",
-            "subject": "Re: podział kontraktów w systemie",
+            "subject": "Re: podział danych w systemie",
             "body": (
                 "<p>Dzień dobry,</p>"
                 "<p>{_zastawialem} nad jedną kwestią — przy równoległym "
-                "prowadzeniu kilku kontraktów, czy za sprawozdawczość "
-                "odpowiada u Państwa personel medyczny, czy wydzielony "
-                "zespół administracyjny?</p>"
+                "prowadzeniu kilku procesów, czy za raportowanie "
+                "odpowiada u Państwa zespół operacyjny, czy wydzielony "
+                "dział administracyjny?</p>"
             ),
         },
     ],
@@ -494,14 +491,13 @@ def _select_opening_strategy(step: int, previous_emails: list | None) -> dict:
     return random.choice(pool)
 
 
-def _select_few_shots(tone_key: str, sender_gender: str, count: int = 2) -> str:
+def _select_few_shots(tone_key: str, sender_gender: str, count: int = 2, gold_examples: list | None = None) -> str:
     """
     Losuje przykłady few-shot z puli danego tonu.
+    Jeśli dostępne są gold_examples z Teacher Alignment (ocenione 5/5),
+    to mają PRIORYTET nad statycznymi — to prawdziwy RLHF loop.
     Formatuje formy gramatyczne (M/F) w treści przykładów.
     """
-    pool = _FEW_SHOT_POOL.get(tone_key, _FEW_SHOT_POOL["professional"])
-    selected = random.sample(pool, min(count, len(pool)))
-
     if sender_gender == "F":
         forms = {
             "{_widzialem}": "Widziałam",
@@ -516,6 +512,20 @@ def _select_few_shots(tone_key: str, sender_gender: str, count: int = 2) -> str:
             "{_zastawialem}": "Zastanawiałem się",
             "{_wracam}": "Wracam",
         }
+
+    # RLHF: jeśli Teacher dostarczył gold_examples (2+), używamy ICH zamiast statycznych
+    if gold_examples and len(gold_examples) >= 2:
+        examples_text = "=== PRZYKŁADY DOBREGO STYLU (Z OCEN OPERATORA — PRIORYTET BEZWZGLĘDNY) ===\n\n"
+        for i, ex in enumerate(gold_examples[:count], 1):
+            subject = ex.get("subject", "")
+            body_snippet = ex.get("body_snippet", "")
+            reason = ex.get("reason", "")
+            examples_text += f"Przykład {i} (✅ oceniony na 5/5 przez operatora):\nSubject: {subject}\nBody:\n{body_snippet}\nDlaczego dobry: {reason}\n\n"
+        return examples_text
+
+    # Fallback: statyczne few-shoty z puli tonu
+    pool = _FEW_SHOT_POOL.get(tone_key, _FEW_SHOT_POOL["professional"])
+    selected = random.sample(pool, min(count, len(pool)))
 
     examples_text = "=== PRZYKŁADY DOBREGO STYLU ===\n\n"
     for i, ex in enumerate(selected, 1):
@@ -806,6 +816,36 @@ def _generate_email_sync(session: Session, lead_id: int):
             })
         logger.info(f"   📜 Historia: {len(previous_emails)} poprzednich maili")
 
+    # --- 3c. TEACHER ALIGNMENT (Dynamiczna Wiedza Klienta) ---
+    alignment_context = ""
+    teacher_gold_examples = None
+    try:
+        from app.database import ClientAlignment
+        alignment = session.query(ClientAlignment).filter_by(client_id=client.id).first()
+        if alignment:
+            parts = []
+            if alignment.writing_guidelines:
+                parts.append(f"DYREKTYWY WRITERA (v{alignment.version}):\n{alignment.writing_guidelines}")
+            gold = alignment.gold_examples or {}
+            positives = gold.get("positive", [])
+            negatives = gold.get("negative", [])
+            # RLHF: przekaż gold_examples do dynamicznych few-shotów
+            if positives and len(positives) >= 2:
+                teacher_gold_examples = positives
+            if positives:
+                best = positives[0]
+                parts.append(f"✅ WZÓR DO NAŚLADOWANIA:\nTemat: {best.get('subject', '')}\n{best.get('body_snippet', '')}\nDlaczego dobry: {best.get('reason', '')}")
+            if negatives:
+                worst = negatives[0]
+                parts.append(f"❌ ANTYWZÓR (CZEGO UNIKAĆ):\nTemat: {worst.get('subject', '')}\n{worst.get('body_snippet', '')}\nDlaczego zły: {worst.get('reason', '')}")
+            if parts:
+                alignment_context = "\n\n".join(parts)
+                logger.info(f"   🧠 Teacher Alignment v{alignment.version} wstrzyknięty ({len(alignment_context)} znaków)")
+                if teacher_gold_examples:
+                    logger.info(f"   🏆 RLHF: {len(teacher_gold_examples)} gold examples zastąpią statyczne few-shoty")
+    except Exception as e:
+        logger.debug(f"   Teacher alignment niedostępny: {e}")
+
     # --- 4. GENERATE EMAIL ---
     try:
         draft = _call_writer(
@@ -819,6 +859,8 @@ def _generate_email_sync(session: Session, lead_id: int):
             writer_model=writer_model,
             sender_gender=sender_gender,
             tone_key=tone_key,
+            alignment_context=alignment_context,
+            gold_examples=teacher_gold_examples,
         )
     except Exception as e:
         logger.error(f"❌ Writer error ({writer_model}): {e}")
@@ -857,6 +899,8 @@ def _generate_email_sync(session: Session, lead_id: int):
                     writer_model=DEFAULT_MODEL,
                     sender_gender=sender_gender,
                     tone_key=tone_key,
+                    alignment_context=alignment_context,
+                    gold_examples=teacher_gold_examples,
                 )
                 logger.info(f"   ✅ FALLBACK OK — wygenerowano na {DEFAULT_MODEL}")
             except Exception as fallback_err:
@@ -891,6 +935,8 @@ def _generate_email_sync(session: Session, lead_id: int):
             writer_model=writer_model,
             sender_gender=sender_gender,
             tone_key=tone_key,
+            alignment_context=alignment_context,
+            gold_examples=teacher_gold_examples,
         )
         safe_body = _sanitize_and_validate_html(draft.body)
         validation = _validate_against_data(safe_body, {}, {})
@@ -951,6 +997,8 @@ def _call_writer(
     writer_model: str = DEFAULT_MODEL,
     sender_gender: str = "M",
     tone_key: str = "professional",
+    alignment_context: str = "",
+    gold_examples: list | None = None,
 ):
     """
     ENGINE v5: Silnik generujący treść maila z systemem różnorodności.
@@ -1069,18 +1117,18 @@ Schemat:
 
         # ENGINE v6: Zmiękczona Rotacja (Mniej audytowo, bardziej partnersko)
         forced_angle = random.choice([
-            "DOKUMENTACJA (Czy obieg dokumentów bywa uciążliwy przy zamknięciu miesiąca)",
-            "SKALA KONTRAKTU (Dużo zakresów świadczeń = dużo administracji — obserwacja oparta na danych z researchu)",
-            "WYDAJNOŚĆ (Czy personel odczuwa duże obciążenie administracyjne)",
-            "KOORDYNACJA (Wyzwania z synchronizacją danych między poradniami / lokalizacjami)",
-            "CYFRYZACJA (Czy systemy gabinetowe obsługują wszystkie wymogi raportowe, czy coś trzeba robić ręcznie)",
-            "PROGRAMY NFZ (Czy placówka wykorzystuje pełen zakres programów dostępnych w ramach kontraktu)",
+            "DOKUMENTACJA (Czy obieg dokumentów bywa uciążliwy przy zamknięciu miesiąca/kwartału)",
+            "SKALA DZIAŁALNOŚCI (Dużo linii usługowych/produktowych = dużo administracji — obserwacja oparta na researchu)",
+            "WYDAJNOŚĆ (Czy zespół odczuwa duże obciążenie administracyjne vs. operacyjne)",
+            "KOORDYNACJA (Wyzwania z synchronizacją danych/procesów między działami / lokalizacjami)",
+            "CYFRYZACJA (Czy systemy IT obsługują wszystkie wymogi operacyjne, czy coś trzeba robić ręcznie)",
+            "OPTYMALIZACJA PROCESÓW (Czy firma w pełni wykorzystuje potencjał swojej skali i zasobów)",
             "PERSPEKTYWA BRANŻOWA (Pracując z branżą, często słyszę o wyzwaniach związanych z X — obserwacja ogólna)"
         ])
         
         forced_cta_type = random.choice([
             "TYP 'WYMIANA MYŚLI': Zapytaj, czy byliby otwarci na krótką, niezobowiązującą wymianę doświadczeń w tym zakresie.",
-            "TYP 'OPINIA': Zapytaj, jak oni z perspektywy swojej przychodni oceniają to zjawisko.",
+            "TYP 'OPINIA': Zapytaj, jak oni z perspektywy swojej firmy oceniają to zjawisko.",
             "TYP 'CZY TO TEMAT': Zapytaj, czy w ich przypadku to też obszar, który potrafi być wyzwaniem.",
             "TYP 'PRIORYTETY': Zapytaj, czy optymalizacja tego procesu to temat, o którym obecnie myślą w placówce.",
             "TYP 'SPOSTRZEZENIE': Podziel się krótką obserwacją branżową i zapytaj czy to rezonuje z ich doświadczeniem.",
@@ -1088,10 +1136,10 @@ Schemat:
         ])
 
         forced_subject_type = random.choice([
-            "Temat jako otwarte pytanie branżowe (np. 'Sprawozdawczość a praktyka', 'Obieg danych w przychodni')",
-            "Temat jako nawiązanie do zmian (np. 'Wymogi NFZ a codzienność', 'Nowe zasady raportowania')",
-            "Temat jako nazwa podprocesu (np. 'Obieg dokumentacji', 'Koordynacja rozliczeń')",
-            "Temat jako wyzwanie infrastrukturalne (np. 'Integracja systemów', 'Zamknięcie miesiąca')"
+            "Temat jako otwarte pytanie branżowe (np. 'Procesy a praktyka', 'Obieg danych')",
+            "Temat jako nawiązanie do zmian (np. 'Nowe wymagania branżowe', 'Zmiany w raportowaniu')",
+            "Temat jako nazwa podprocesu (np. 'Obieg dokumentacji', 'Koordynacja procesów')",
+            "Temat jako wyzwanie infrastrukturalne (np. 'Integracja systemów', 'Zamknięcie kwartału')"
         ])
 
         if step == 1:
@@ -1109,9 +1157,9 @@ Schemat (50-80 słów RAZEM, 3 krótkie akapity):
 4. JEDNO krótkie pytanie końcowe (CTA) — wg typu wymuszontego powyżej.
 
 ✅ WZÓR ZŁOTEGO STANDARDU (styl do naśladowania):
-"Przychodnie z kontraktem NFZ mają coraz więcej do udokumentowania. Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
+"Firmy z Państwa branży coraz częściej sygnalizują rosnące obciążenie dokumentacyjne. Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
 ❌ ANTY-WZÓR (zbyt rozwlekły):
-"Zastanawiam się, czy po wdrożeniu X system gabinetowy pokrywa u Państwa wszystkie wymogi raportowe NFZ, czy część danych nadal wymaga ręcznego uzupełniania. Czy byliby Państwo otwarci na krótką rozmowę?"
+"Zastanawiam się, czy po wdrożeniu X Państwa system pokrywa wszystkie wymogi raportowe, czy część danych nadal wymaga ręcznego uzupełniania. Czy byliby Państwo otwarci na krótką rozmowę?"
 
 WAŻNE: Zakaz używania stwierdzeń "robimy to", "pomagamy w", "nasza oferta to".
 NIGDY nie stosuj sformułowania "Współpracując z podobnymi..." — to zakazana fraza.
@@ -1140,8 +1188,18 @@ WAŻNE: NIGDY nie powtórz argumentu/frazy z poprzedniego maila.
     if tone_of_voice:
         tone_of_voice_rule = f"\n=== TON GŁOSU (PRIORYTET NADRZĘDNY) ===\nKlient zdefiniował wymagany styl komunikacji: {tone_of_voice}\nKażde zdanie maila MUSI odzwierciedlać ten ton. To wymóg niepodlegający negocjacji.\n"
 
+    # Teacher Alignment injection (BEZWZGL. PRIORYTET)
+    alignment_block = ""
+    if alignment_context:
+        alignment_block = f"""
+=== 🧠 DYNAMICZNA WIEDZA KLIENTA (BEZWZGLĘDNY PRIORYTET — NADPISUJE DOMYŚLNE REGUŁY) ===
+{alignment_context}
+=== KONIEC DYNAMICZNEJ WIEDZY ===
+"""
+
     system_prompt = f"""{persona}
 {tone_of_voice_rule}
+{alignment_block}
 === ROLA: ŚLEPY ANALITYK ===
 Jesteś analitykiem branżowym. NIE sprzedajesz. NIE oferujesz. NIE proponujesz pomocy.
 Zadajesz pytania analityczne o procesy odbiorcy. Budujesz relację przez merytorykę,
@@ -1154,13 +1212,13 @@ nie przez ofertę. Każdy mail to zapytanie o doświadczenia — NIE informacja 
 4. JEDNO PYTANIE. Każdy mail kończy się JEDNYM krótkim pytaniem. NIGDY dwoma pytaniami pod rząd. NIGDY złożonym pytaniem z "czy...czy...". Proste, otwarte, 1 zdanie.
 
 === RÓŻNORODNOŚĆ (KRYTYCZNE) ===
-Każdy mail MUSI mieć INNY kąt ataku. NIE pisz co mail o "rozliczeniach NFZ" w tej samej strukturze.
+Każdy mail MUSI mieć INNY kąt ataku. NIE pisz co mail o tym samym temacie w tej samej strukturze.
 Rotuj między tymi OSIAMI TEMATYCZNYMI:
-1. DOKUMENTACJA — obieg danych, zamknięcie miesiąca, ilość zestawień
-2. SKALA KONTRAKTU — dużo zakresów = dużo administracji (oparte na danych z researchu)
-3. WYDAJNOŚĆ ADMINISTRACJI — obciążenie administracyjne, automatyzacja vs praca ręczna
-4. PROGRAMY I KONTRAKT — pełne wykorzystanie dostępnych programów, optymalizacja kontraktu
-5. CYFRYZACJA — systemy gabinetowe, integracja, dane
+1. DOKUMENTACJA — obieg danych, zamknięcie okresu, ilość zestawień
+2. SKALA DZIAŁALNOŚCI — dużo obszarów = dużo administracji (oparte na danych z researchu)
+3. WYDAJNOŚĆ — obciążenie administracyjne vs operacyjne, automatyzacja vs praca ręczna
+4. OPTYMALIZACJA — pełne wykorzystanie potencjału firmy, optymalizacja procesów
+5. CYFRYZACJA — systemy IT, integracja danych, przepływ informacji
 
 Każde CTA musi być SEMANTYCZNIE INNE — nie przepisuj tego samego pytania innymi słowami.
 ⛔ ABSOLUTNY ZAKAZ pytań audytorskich typu:
@@ -1170,26 +1228,26 @@ Każde CTA musi być SEMANTYCZNIE INNE — nie przepisuj tego samego pytania inn
 ✅ DOZWOLONE pytania partnerskie:
   - "Czy w Państwa przypadku to też bywa wyzwaniem?" → równieśnicy
   - "Czy to temat, nad którym Państwo się pochylają?" → szacunek
-  - "Jak Państwo oceniają to z perspektywy swojej placówki?" → opinia
-ZAKAZANE: pisanie 5 maili pod rząd z tym samym schematem "Placówki [typ] prowadzące [usługi] mają [problem]. Czy to temat?"
+  - "Jak Państwo oceniają to z perspektywy swojej firmy?" → opinia
+ZAKAZANE: pisanie 5 maili pod rząd z tym samym schematem "Firmy [typ] prowadzące [usługi] mają [problem]. Czy to temat?"
 
 === 🛑 ZERO HALUCYNACJI — TWARDY FAKT 🛑 ===
 ABSOLUTNY ZAKAZ zgadywania i dodawania usług, programów, procedur ani cech odbiorcy, których NIE MA wymienionych w sekcji DANE.
-Jeśli wiesz jaka to branża (np. "Ośrodek Zdrowia"), NIE WOLNO Ci zmyślać standardowych usług tej branży (np. "szczepienia, opieka pielęgniarska"), chyba że research to wprost potwierdził!
-Lepiej napisać ogólnie ("rozliczenia NFZ w Państwa przychodni") niż zmyślić procedurę. Działaj TYLKO na twardych danych.
+Jeśli wiesz jaka to branża, NIE WOLNO Ci zmyślać standardowych usług tej branży, chyba że research to wprost potwierdził!
+Lepiej napisać ogólnie niż zmyślić konkretną usługę/procedurę. Działaj TYLKO na twardych danych.
 
-⛔ ZAKAZ NAZW PROGRAMÓW ZDROWOTNYCH:
-- NIGDY nie wymieniaj nazw konkretnych programów NFZ (np. "Profilaktyka 40+", "Program CHUK", "FENIKS") w treści maila.
-- Programy zmieniają się co rok — jeśli wymienisz nieaktualny program, klient natychmiast wie że NIE jesteś ekspertem.
-- Zamiast "Prowadzą Państwo Profilaktykę 40+" → pisz "Prowadzą Państwo programy profilaktyczne w ramach kontraktu".
+⛔ ZAKAZ NAZW KONKRETNYCH PROGRAMÓW/CERTYFIKATÓW/DOTACJI:
+- NIGDY nie wymieniaj nazw konkretnych programów branżowych, dotacji, certyfikatów w treści maila — chyba że research to WPROST potwierdza.
+- Programy/regulacje zmieniają się — wymienienie nieaktualnego programu natychmiast obnaża brak wiedzy.
+- Zamiast nazwy konkretnego programu → pisz ogólnie o zakresie działalności.
 - Wyjątek: jeśli icebreaker WPROST wymienia program — możesz go użyć TYLKO w hooku.
 
-⛔ ZAKAZ WYMYSŁANIA FAKTÓW O NFZ/PRAWIE:
-- NIGDY nie pisz "NFZ ostatnio zaostrzynł zasady..." / "od połowy roku zmieniły się wymagania..." — chyba że MASZ ŹRÓDŁO w danych z researchera.
-- NIGDY nie wymyślaj statystyk ("80% placówek...", "większość przychodni...").
+⛔ ZAKAZ WYMYSŁANIA FAKTÓW BRANŻOWYCH/PRAWNYCH:
+- NIGDY nie pisz "ostatnio zaostrzono zasady..." / "od połowy roku zmieniły się wymagania..." — chyba że MASZ ŹRÓDŁO w danych z researchera.
+- NIGDY nie wymyślaj statystyk ("80% firm...", "większość przedsiębiorstw...").
 - NIGDY nie strasz kontrolami, karami ani konsekwencjami prawnymi.
 - Jeśli chcesz nawiązać do branży, użyj BEZPIECZNEJ formuły: krótka ogólna obserwacja + pytanie.
-  Np.: "Przychodnie z kontraktem NFZ mają coraz więcej do udokumentowania." — to prawda ogólna, nie twierdzenie o faktach.
+  Np.: "Firmy z Państwa branży coraz częściej sygnalizują rosnące obciążenie dokumentacyjne." — to prawda ogólna, nie twierdzenie o faktach.
 
 === JĘZYK — PROFESJONALNY POLSKI ===
 Piszesz profesjonalną polszczyzną. Ton: analityczny, merytoryczny, z szacunkiem.
@@ -1198,7 +1256,7 @@ NIE tłumacz angielskich zwrotów dosłownie.
 Złe: "zostawiać pieniądze na stole" → Dobre: "tracić na kontrakcie"
 Złe: "to zwykle sygnalizuje" → Dobre: "to często oznacza"
 Złe: "generować realne straty" → Dobre: "kosztować"
-Złe: "punkt styku z płatnikiem" → Dobre: "rozliczenia z NFZ"
+Złe: "punkt styku z płatnikiem" → Dobre: "rozliczenia z kontrahentem"
 Złe: "wymaga uwagi" → Dobre: "warto zweryfikować"
 Złe: "jest aktywny po Państwa stronie" → Dobre: "Państwo się tym zajmują"
 
@@ -1230,8 +1288,8 @@ WAŻNE: Jeśli są poprzednie maile — NIE powtarzaj tych samych argumentów, C
 === TEMAT MAILA (subject) ===
 3-5 słów. Brzmi jak wewnętrzna wiadomość, nie reklama i nie newsletter.
 PIERWSZA LITERA TEMATU MUSI BYĆ WIELKA (np. "Obieg dokumentacji" a nie "obieg dokumentacji").
-ZAKAZ wstawiania "rozliczenia NFZ" w każdy temat — to natychmiast wygląda jak masówka.
-NIGDY nie zaczynaj tematu od słowa "Rozliczenia".
+ZAKAZ wstawiania tego samego tematu w każdy subject — to natychmiast wygląda jak masówka.
+NIGDY nie zaczynaj tematu od powtarzającego się słowa-klucza.
 Styl i rodzaj tematu został dokładnie określony w WYMOGACH KRYTYCZNYCH powyżej.
 === CTA — ZAKOŃCZENIE MAILA (MATRYCA ROTACYJNA) ===
 Końcowe pytanie MUSI być krótkie (JEDNO zdanie), partnerskie i nieinwazyjne.
@@ -1239,7 +1297,7 @@ NIGDY nie kończ maila DWOMA pytaniami. NIGDY złożonym pytaniem z "czy...czy..
 Użyj JEDNEGO z poniższych typów:
 - "Czy w Państwa przypadku to też punkt, który wymaga uwagi?"
 - "Czy to obszar, który obecnie weryfikujecie?"
-- "Jak Państwo oceniają to z perspektywy swojej placówki?"
+- "Jak Państwo oceniają to z perspektywy swojej firmy?"
 - "Czy byliby Państwo otwarci na krótką wymianę spostrzeżeń?"
 - "Czy Państwo również zauważają ten trend?"
 - "Czy to temat, nad którym Państwo się pochylają?"
@@ -1249,10 +1307,10 @@ ZAKAZANE CTA:
 - "Pogadamy?" / "Szukacie wsparcia?" / "Macie to ogarnięte?" — ZAKAZANE
 
 === ZAKAZANE WZORCE STRUKTURALNE ===
-NIE zaczynaj treści maila od: "Placówki [typ] prowadzące [usługi]..." — ten schemat powtarza się zbyt często.
+NIE zaczynaj treści maila od: "Firmy [typ] prowadzące [usługi]..." — ten schemat powtarza się zbyt często.
 Zamiast tego ROTUJ otwarcie:
 1. ICEBREAKER: "Na Państwa stronie widziałam, że..." (konkret ze strony)
-2. OBSERWACJA: "Przychodnie z kontraktem NFZ mają coraz więcej do udokumentowania." (ogólna prawda branżowa)
+2. OBSERWACJA: "Firmy z Państwa branży coraz częściej sygnalizują rosnące obciążenie dokumentacyjne." (ogólna prawda branżowa)
 3. PYTANIE WPROST: "Przy tak szerokim zakresie kontraktu..." (od razu do sedna)
 4. KONKRET Z DANYCH: "Widziałam, że prowadzicie Państwo [konkretna usługa z researchu]..." (fakt ze strony)
 NIE używaj 2x tego samego schematu otwarcia pod rząd.
@@ -1281,7 +1339,7 @@ wszelkie liczby/procenty/statystyki których NIE MA w danych powyżej
 
 Kategoria 3b — powtarzalne formuły (bot-markers przez monotonię):
 "Pracując z branżą, często słyszę" — użyj MAX RAZ na 5 maili. Rotuj z innymi otwarciami.
-"Jedne placówki... inne..." — ZAKAZANE. To schemat porównawczy który powtarza się w każdym mailu.
+"Jedne firmy... inne..." — ZAKAZANE. To schemat porównawczy który powtarza się w każdym mailu.
 "Obe ścieżki mają swoje konsekwencje" — ZAKAZANE. Puste stwierdzenie.
 "rosną z roku na rok" / "rosnące wymagania" — użyj MAX RAZ na 5 maili.
 "Ciekawi mnie, jak to wygląda u Państwa" — ZAKAZANE. Brzmi fałszywie.
@@ -1300,10 +1358,10 @@ Kategoria 5 — naciągane implikacje (budują fałszywe wnioski):
 NIE łącz przypadkowych faktów ze strony (np. "mają IOD" → "pewnie mają problemy z rozliczeniami").
 NIE pisz "to zwykle sygnalizuje, że..." — to zawsze brzmi jak bot.
 Jeśli nie masz LOGICZNEGO połączenia między faktem a wnioskiem — nie wymuszaj go.
-NIE używaj daty ostatniej aktualizacji strony jako argumentu ("strona nie była aktualizowana od 2023" → "pewnie mają problemy operacyjne"). To pasywno-agresywne i fałszywe — 90% małych przychodni nie aktualizuje strony regularnie i to jest normalne.
+NIE używaj daty ostatniej aktualizacji strony jako argumentu ("strona nie była aktualizowana od 2023" → "pewnie mają problemy operacyjne"). To pasywno-agresywne i fałszywe — 90% małych firm nie aktualizuje strony regularnie i to jest normalne.
 NIE sugeruj że zaniedbana strona = zaniedbany biznes.
 
-Kategoria 6 — slang i kolokwializmy (zabronione w B2B medycznym):
+Kategoria 6 — slang i kolokwializmy (zabronione w B2B profesjonalnym):
 "ogarnąć", "ogarnięte", "pogadamy", "gadamy", "fajny", "spoko",
 "papierkowa robota", "klepać raporty", "ogarniać", "nawijka",
 wszelkie sformułowania które brzmią jak rozmowa między kolegami, a nie profesjonalna korespondencja
@@ -1321,7 +1379,7 @@ ZASADA: Każde sformułowanie sugerujące "ja mam to czego szukacie" to INFORMAC
 - "Chciałbym się umówić na" / "Może znajdziemy czas na"
 - Więcej niż jedno pytanie w CTA
 
-{_select_few_shots(tone_key, sender_gender)}
+{_select_few_shots(tone_key, sender_gender, gold_examples=gold_examples)}
 
 === WEWNĘTRZNY CHECKLIST (nie pisz tego w mailu) ===
 1. Co WIEM na pewno o odbiorcy? (tylko z danych)
@@ -1378,7 +1436,7 @@ KRYTERIA (każde oceniasz 0-20, suma = score):
 3. ZERO HALUCYNACJI (0-20):
    Czy wszystkie informacje o odbiorcy są prawdziwe (z danych)?
    Czy nie wymyślono usług, programów, statystyk, konkretnych dat (np. "Od stycznia 2025"), kar finansowych ani wskaźników procentowych (np. "5%"), których NIE BYŁO wprost w danych?
-   Audytorze: Model ma tendencję do zmyślania konkretnych nowelizacji prawnych (np. "NFZ zaostrza od stycznia..."). Jeśli zobaczysz konkretną datę lub liczbę, uznaj ją za halucynację. 0 pkt = zmyślanie twardych faktów/liczb.
+   Audytorze: Model ma tendencję do zmyślania konkretnych nowelizacji prawnych/branżowych (np. "od stycznia zaostrzono..."). Jeśli zobaczysz konkretną datę lub liczbę, uznaj ją za halucynację. 0 pkt = zmyślanie twardych faktów/liczb.
 
 4. ZGODNOŚĆ Z RODO/UŚUDE (0-20):
    Czy mail NIE zawiera oferty handlowej, obietnic ani nachalnych CTA?
