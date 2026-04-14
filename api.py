@@ -922,8 +922,6 @@ def phase2_reset_limits(client_id: int, api_key: str = Security(get_api_key)):
 # --- FEEDBACK CRUD (pełne pola — laboratorium do oceniania) ---
 
 class FeedbackCreate(BaseModel):
-    scout_rating: int | None = None            # 1-5 (jakość leadu)
-    scout_comments: str | None = None
     researcher_rating: int | None = None       # 1-5
     writer_rating: int | None = None           # 1-5
     researcher_comments: str | None = None
@@ -932,8 +930,6 @@ class FeedbackCreate(BaseModel):
     corrected_body: str | None = None
 
 class FeedbackUpdate(BaseModel):
-    scout_rating: int | None = None
-    scout_comments: str | None = None
     researcher_rating: int | None = None
     writer_rating: int | None = None
     researcher_comments: str | None = None
@@ -989,8 +985,6 @@ def get_feedback(lead_id: int, api_key: str = Security(get_api_key)):
             "exists": True,
             "id": fb.id,
             "lead_id": fb.lead_id,
-            "scout_rating": fb.scout_rating,
-            "scout_comments": fb.scout_comments,
             "researcher_rating": fb.researcher_rating,
             "writer_rating": fb.writer_rating,
             "researcher_comments": fb.researcher_comments,
@@ -1049,8 +1043,6 @@ def list_feedbacks(client_id: int, processed: bool | None = None, api_key: str =
             result.append({
                 "id": fb.id,
                 "lead_id": fb.lead_id,
-                "scout_rating": fb.scout_rating,
-                "scout_comments": fb.scout_comments,
                 "researcher_rating": fb.researcher_rating,
                 "writer_rating": fb.writer_rating,
                 "researcher_comments": fb.researcher_comments,
