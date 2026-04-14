@@ -730,26 +730,73 @@ def delete_campaign(campaign_id: int, api_key: str = Security(get_api_key)):
 # ==============================================================================
 
 @app.get("/api/leads/{client_id}")
-def get_leads(client_id: int, api_key: str = Security(get_api_key)):
+def get_leads(
+    client_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=1000),
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    date_field: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    api_key: str = Security(get_api_key),
+):
+    from sqlalchemy import or_
+    from datetime import datetime
+
     with SessionLocal() as session:
-        rows = session.query(
+        q = session.query(
             Lead.id, Lead.status, Lead.target_email, Lead.ai_confidence_score,
-            Lead.generated_email_subject, Lead.step_number,
+            Lead.generated_email_subject, Lead.step_number, Lead.sent_at,
             GlobalCompany.name.label("company_name"), GlobalCompany.domain
         ).join(GlobalCompany).join(Campaign).filter(
             Campaign.client_id == client_id
-        ).order_by(Lead.id.desc()).limit(200).all()
-        
-        return [{
-            "id": r.id,
-            "status": r.status,
-            "company_name": r.company_name,
-            "domain": r.domain,
-            "target_email": r.target_email,
-            "confidence": r.ai_confidence_score,
-            "subject": r.generated_email_subject,
-            "step": r.step_number,
-        } for r in rows]
+        )
+
+        if status:
+            q = q.filter(Lead.status == status.upper())
+
+        if search:
+            pattern = f"%{search}%"
+            q = q.filter(or_(
+                GlobalCompany.name.ilike(pattern),
+                Lead.target_email.ilike(pattern),
+                GlobalCompany.domain.ilike(pattern),
+            ))
+
+        if date_field in ("sent_at",) and (date_from or date_to):
+            col = Lead.sent_at
+            if date_from:
+                try:
+                    q = q.filter(col >= datetime.fromisoformat(date_from))
+                except ValueError:
+                    pass
+            if date_to:
+                try:
+                    q = q.filter(col <= datetime.fromisoformat(date_to + "T23:59:59"))
+                except ValueError:
+                    pass
+
+        total = q.count()
+        rows = q.order_by(Lead.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+
+        return {
+            "leads": [{
+                "id": r.id,
+                "status": r.status,
+                "company_name": r.company_name,
+                "domain": r.domain,
+                "target_email": r.target_email,
+                "confidence": r.ai_confidence_score,
+                "subject": r.generated_email_subject,
+                "step": r.step_number,
+                "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+            } for r in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": max(1, -(-total // page_size)),
+        }
 
 @app.get("/api/leads/{client_id}/kanban")
 def get_leads_kanban(client_id: int, api_key: str = Security(get_api_key)):
