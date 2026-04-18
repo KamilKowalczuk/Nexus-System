@@ -137,27 +137,38 @@ def _log_sync_result(sync_result: dict) -> None:
         logger.debug("[SYNC] Brak zmian w briefach.")
 
 
-def get_today_progress(session: Session, client: Client) -> int:
-    """Zwraca liczbę PIERWSZYCH maili wysłanych dzisiaj (follow-upy się nie liczą)."""
+def get_today_progress(session: Session, client: Client) -> tuple[int, int]:
+    """Zwraca krotkę (maile_nowe, maile_followupy) wysłane dzisiaj."""
     today = datetime.now().date()
-    return session.query(Lead).join(Campaign).filter(
+    sent_today = session.query(Lead.step_number).join(Campaign).filter(
         Campaign.client_id == client.id,
         Lead.status == "SENT",
-        Lead.step_number == 1,
         func.date(Lead.sent_at) == today,
-    ).count()
+    ).all()
+    
+    new_sent = sum(1 for (step,) in sent_today if step == 1)
+    fup_sent = sum(1 for (step,) in sent_today if step > 1)
+    return new_sent, fup_sent
 
 
 def _get_pipeline_counts(session: Session, client: Client) -> dict:
-    """Ile leadów jest na poszczególnych etapach pipeline'u (step_number=1, nowe firmy)."""
+    """Ile leadów jest na poszczególnych etapach pipeline'u."""
     base = session.query(Lead).join(Campaign).filter(
         Campaign.client_id == client.id,
         Lead.step_number == 1,
+    )
+    # Follow-upy (step > 1) — osobny licznik, nie blokowany przez daily limit
+    followup_base = session.query(Lead).join(Campaign).filter(
+        Campaign.client_id == client.id,
+        Lead.step_number > 1,
     )
     return {
         "new": base.filter(Lead.status == "NEW").count(),
         "analyzed": base.filter(Lead.status == "ANALYZED").count(),
         "drafted": base.filter(Lead.status == "DRAFTED").count(),
+        # Follow-up pipeline
+        "followup_analyzed": followup_base.filter(Lead.status == "ANALYZED").count(),
+        "followup_drafted": followup_base.filter(Lead.status == "DRAFTED").count(),
     }
 
 
@@ -269,6 +280,7 @@ async def _handle_drafts(
     client: Client,
     worker_id: str,
     use_queues: bool,
+    is_followup: bool = False,
 ) -> bool:
     """FAZA 1: Wysyła lub zapisuje gotowe drafty (DRAFTED → SENT).
 
@@ -362,10 +374,14 @@ async def _handle_drafts(
             draft = session.query(Lead).filter(Lead.id == lead_data["lead_id"]).first()
 
     if not draft:
-        draft = session.query(Lead).join(Campaign).filter(
+        query = session.query(Lead).join(Campaign).filter(
             Campaign.client_id == client.id,
             Lead.status == "DRAFTED",
-        ).first()
+        )
+        if is_followup:
+            draft = query.filter(Lead.step_number > 1).order_by(Lead.step_number.desc(), Lead.last_action_at.asc()).first()
+        else:
+            draft = query.filter(Lead.step_number == 1).order_by(Lead.id.asc()).first()
 
     if not draft:
         return False
@@ -387,6 +403,7 @@ async def _handle_writing(
     client: Client,
     worker_id: str,
     use_queues: bool,
+    is_followup: bool = False,
 ) -> bool:
     """FAZA 1D: Generuje maile dla leadów ze statusem ANALYZED."""
     if PHASE2_ENABLED:
@@ -399,10 +416,14 @@ async def _handle_writing(
             analyzed = session.query(Lead).filter(Lead.id == lead_data["lead_id"]).first()
 
     if not analyzed:
-        analyzed = session.query(Lead).join(Campaign).filter(
+        query = session.query(Lead).join(Campaign).filter(
             Campaign.client_id == client.id,
             Lead.status == "ANALYZED",
-        ).first()
+        )
+        if is_followup:
+            analyzed = query.filter(Lead.step_number > 1).order_by(Lead.step_number.desc(), Lead.last_action_at.asc()).first()
+        else:
+            analyzed = query.filter(Lead.step_number == 1).order_by(Lead.id.asc()).first()
 
     if not analyzed:
         return False
@@ -552,14 +573,22 @@ async def run_client_cycle(
                 queue_manager.register_worker(worker_id, client.id, "checking_limits")
 
             # 2. LIMIT I PIPELINE
+            MAX_FUP_RATIO = 0.6  # 60% budżetu oddane dla FUPów, by nie zagłodzić NEW
             limit = calculate_daily_limit(client)
-            done_today = get_today_progress(session, client)
+            done_new, done_fup = get_today_progress(session, client)
+            done_today = done_new + done_fup
+
             pipeline = _get_pipeline_counts(session, client)
             in_window = _is_sending_window()
             sending_mode = getattr(client, "sending_mode", "DRAFT")
 
             total_in_pipeline = pipeline["new"] + pipeline["analyzed"] + pipeline["drafted"]
             need_more = (done_today + total_in_pipeline) < limit
+
+            # Max limit followupów (min 1, max ratio z dziennego limitu)
+            max_fup = max(1, int(float(limit) * MAX_FUP_RATIO)) if limit > 0 else 0
+            can_send_fup = done_fup < max_fup and done_today < limit
+            can_send_new = done_today < limit
 
             # FAZA 0: HIGIENA (zawsze — inbox + follow-upy)
             await _handle_hygiene(session, client, use_queues)
@@ -568,25 +597,38 @@ async def run_client_cycle(
             # OKIENKO WYSYŁKOWE (8:00 - 20:00)
             # =====================================================
             if in_window:
-                # --- FAZA 1: WYSYŁKA / DRAFTY ---
-                if done_today < limit:
+                # --- PRIORYTET 1: FOLLOW-UPY (zastosowany ratio FUP vs NEW) ---
+                if can_send_fup:
+                    if pipeline["followup_drafted"] > 0:
+                        if not _is_still_active(): return False
+                        console.print(f"[magenta]📤 {client.name}:[/magenta] Follow-up → wysyłka ({pipeline['followup_drafted']} gotowych, ratio: {done_fup}/{max_fup})")
+                        if await _handle_drafts(session, client, worker_id, use_queues, is_followup=True):
+                            return True
+
+                # Pisanie follow-upów w tle z priorytetem
+                if pipeline["followup_analyzed"] > 0:
                     if not _is_still_active(): return False
-                    if await _handle_drafts(session, client, worker_id, use_queues):
+                    console.print(f"[magenta]🔄 {client.name}:[/magenta] Piszę follow-up ({pipeline['followup_analyzed']} w kolejce)...")
+                    if await _handle_writing(session, client, worker_id, use_queues, is_followup=True):
                         return True
 
-                # --- FAZA 2: PISANIE (ANALYZED → DRAFTED) ---
+                # --- PRIORYTET 2: NOWE MAILE ---
+                if can_send_new:
+                    if pipeline["drafted"] > 0:
+                        if not _is_still_active(): return False
+                        if await _handle_drafts(session, client, worker_id, use_queues, is_followup=False):
+                            return True
+
                 if pipeline["analyzed"] > 0:
                     if not _is_still_active(): return False
-                    if await _handle_writing(session, client, worker_id, use_queues):
+                    if await _handle_writing(session, client, worker_id, use_queues, is_followup=False):
                         return True
 
-                # --- FAZA 3: RESEARCH (NEW → ANALYZED) ---
                 if pipeline["new"] > 0:
                     if not _is_still_active(): return False
                     if await _handle_research(session, client, worker_id, use_queues):
                         return True
 
-                # --- FAZA 4: SCOUTING (jeśli pipeline za mały) ---
                 if need_more:
                     if not _is_still_active(): return False
                     force_scout = total_in_pipeline == 0
@@ -610,9 +652,14 @@ async def run_client_cycle(
                         return True
 
                 # --- Pisanie (ANALYZED → DRAFTED) — przygotowujemy gotowe maile ---
+                if pipeline["followup_analyzed"] > 0:
+                    if not _is_still_active(): return False
+                    if await _handle_writing(session, client, worker_id, use_queues, is_followup=True):
+                        return True
+
                 if pipeline["analyzed"] > 0:
                     if not _is_still_active(): return False
-                    if await _handle_writing(session, client, worker_id, use_queues):
+                    if await _handle_writing(session, client, worker_id, use_queues, is_followup=False):
                         return True
 
                 # --- Scouting (jeśli brakuje leadów na jutro) ---

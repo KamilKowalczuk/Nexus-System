@@ -125,6 +125,10 @@ class GlobalCompany(Base):
     # KONTAKT
     phone_number = Column(String, nullable=True)  # Numer telefonu z Google Maps
 
+    # GEOLOKALIZACJA & ŹRÓDŁO
+    teryt_code = Column(String, nullable=True, index=True)  # 7-cyfrowy kod TERYT (pierwsze 2 cyfry = województwo, np. 06 = lubelskie)
+    source = Column(String, nullable=True)                   # Źródło danych: 'GOOGLE_MAPS', 'RPWDL', 'MANUAL', 'MEDIC_PHONE'
+
     # VALIDATION LAYER
     is_active = Column(Boolean, default=True)
     has_mx_records = Column(Boolean, default=False) 

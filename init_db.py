@@ -63,6 +63,12 @@ _COLUMN_MIGRATIONS = [
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS industry VARCHAR",
     "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS address VARCHAR",
 
+    # Tabela: global_companies — geolokalizacja i źródło danych (RPWDL Import)
+    "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS teryt_code VARCHAR",
+    "ALTER TABLE global_companies ADD COLUMN IF NOT EXISTS source VARCHAR",
+    # Indeks na teryt_code dla szybkich zapytań per-województwo
+    "CREATE INDEX IF NOT EXISTS ix_global_companies_teryt_code ON global_companies (teryt_code)",
+
     # Tabela: lead_feedbacks — Teacher Engine (RLHF feedback loop)
     "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS scout_rating INTEGER",
     "ALTER TABLE lead_feedbacks ADD COLUMN IF NOT EXISTS scout_comments TEXT",
